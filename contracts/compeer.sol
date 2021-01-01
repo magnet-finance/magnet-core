@@ -115,6 +115,7 @@ contract Compeer {
         f.imageUrl = _imageUrl;
         
         for (uint i = 0; i < _admins.length; i++) {
+            // TODO: does funder need to be in admin? is funder allowed to be admin?
             adminFunders[_admins[i]].push(msg.sender);
         }
 
