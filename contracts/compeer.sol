@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
+// TODO: is 0.8.0 wise now that I've stopped return arrays of structs?
 
 /**
  * @title Carrot Contract
  * @author Will Hennessy
  */
 contract Carrot {
-    // TODO: change names from carrot to compeer
     
     /// @dev Contract design follows the one-to-many model with one Funder related to many VestingCarrots
     /// https://medium.com/robhitchens/enforcing-referential-integrity-in-ethereum-smart-contracts-a9ab1427ff42
@@ -31,7 +31,6 @@ contract Carrot {
     mapping (address => Funder) public funders;
     /// @notice List of all funders who have ever created a carrot.
     address[] public fundersList;
-
 
     /**
      * @notice Record details for a Vesting Carrot
@@ -64,12 +63,13 @@ contract Carrot {
     mapping (uint => VestingCarrot) public vestingCarrots;
     uint public nextVestingCarrotId;
 
-    // TODO: define data structure for contributors relationship
     /// @notice List of all VestingCarrots owned by a given address
-    mapping (address => uint[]) public contributorToVestingCarrotIds;
+    mapping (address => uint[]) public recipientToVestingCarrotIds;
 
-    // TODO: define data structure for admins relationship. array in struct?
-
+    /// @notice adminFunders[admin] returns list of all Funders for whom admin is admin.
+    mapping (address => address[]) public adminFunders;
+    /// @notice admins[admin][funder] = true if user is an admin for this funder.
+    // mapping (address => mapping (address => bool)) public admins;
 
 
     /// @notice An event thats emitted when a new Funder is registered
@@ -102,7 +102,7 @@ contract Carrot {
         string calldata _description,
         string calldata _imageUrl)
     external returns (uint) {
-        require(!isFunder(msg.sender), "Funder record already exists");
+        require(!isFunder(msg.sender), "Funder already exists");
         
         fundersList.push(msg.sender);
         Funder storage f = funders[msg.sender];
@@ -113,9 +113,13 @@ contract Carrot {
         f.name = _name;
         f.description = _description;
         f.imageUrl = _imageUrl;
+        
+        for (uint i = 0; i < _admins.length; i++) {
+            adminFunders[_admins[i]].push(msg.sender);
+        }
 
-        emit FunderRegistered(f.funder, f.id);
-        return f.id;
+        emit FunderRegistered(msg.sender, fundersList.length - 1);
+        return fundersList.length - 1;
     }
 
     /// @notice Mint a new Vesting Carrot with 0 balance.
@@ -129,11 +133,11 @@ contract Carrot {
         uint _endTime,
         string calldata _message)
     external returns (uint) {
-        require(isFunder(msg.sender), "Error: you must register this address as a funder before minting carrots.");
-        require(_startTime >= block.timestamp, "Start time is in the past.");
-        require(_cliffTime >= block.timestamp, "Cliff time is in the past.");
-        require(_endTime >= block.timestamp, "End time is in the past.");
-        require(_vestingPeriodLength <= (_endTime - _startTime), "Vesting Period Length is longer than duration.");
+        require(isFunder(msg.sender), "Must register as funder first");
+        require(_startTime >= block.timestamp, "Start time is in the past");
+        require(_cliffTime >= block.timestamp, "Cliff time is in the past");
+        require(_endTime >= block.timestamp, "End time is in the past");
+        require(_vestingPeriodLength <= (_endTime - _startTime), "Vesting Period is longer than duration");
         
         vestingCarrots[nextVestingCarrotId] = VestingCarrot({
             recipient: _recipient,
@@ -151,7 +155,7 @@ contract Carrot {
         });
         
         funders[msg.sender].carrotIds.push(nextVestingCarrotId);
-        contributorToVestingCarrotIds[_recipient].push(nextVestingCarrotId);
+        recipientToVestingCarrotIds[_recipient].push(nextVestingCarrotId);
         emit VestingCarrotMinted(_recipient, msg.sender, nextVestingCarrotId);
         nextVestingCarrotId++;
         return nextVestingCarrotId-1;
@@ -226,40 +230,21 @@ contract Carrot {
         return vestingCarrots[_carrotId].balance;
     }
 
+    /// @notice Get all carrots belonging to _recipient
+    function getCarrotsByRecipient(address _recipient) public view returns (uint[] memory) {
+        return recipientToVestingCarrotIds[_recipient];
+    }
+    
+    /// @notice Get all Funders for this _admin is admin
+    function getFundersByAdmin(address _admin) public view returns (address[] memory) {
+        return adminFunders[_admin];
+    }
 
-    // @notice fetch all carrots by contributor address
-    // getCarrotsByContributor(contributorId) - return carrots array from my mapping
-    
-    // getFunderByAdminAddress -> this is tricky because an admin might be on multiple funders.
-    
-    // TODO: setter(s) to update Funder metadata (name, image, etc).
+    // TODO: setters to update Funder metadata (name, image, admins, etc).
+    // require onlyFunder (or just msg.sender).
+    // can Admins perform edits?
     // require name is not empty string
-
-
-/** Javacript should handle Get All for loops
-    // @notice Get all funders in Carrot
-    function getAllFunders() public view returns (Funder[] memory) {
-        Funder[] memory result = new Funder[](nextFunderId-1);
-        for (uint i = 1; i < nextFunderId; i++) {
-            result[i-1] = funders[i];
-        }
-        return result;
-    }
-
-    // @notice Get all carrots, grouped by employee.
-    function getAllVestingCarrots() public view returns (VestingCarrot[] memory) {
-        VestingCarrot[] memory result = new VestingCarrot[](nextVestingCarrotId-1);
-        for (uint i = 1; i < nextVestingCarrotId; i++) {
-            result[i-1] = vestingCarrots[i];
-        }
-        return result;
-    }
-*/
-
-
-    // challenge: solidity does not support returning nested dynamic arrays. You cannot return a Carrot[] or even String[] because they have two layers of dyanmic.
-    // however, you can return dynamic arrays of fixed data such as uint[] or address[]
-    // UPDATE: 0.8.0 supports this return type
-    // what is my unit of account? uint ids. should offload as much work as possible to javascript? probably yes to reduce gas cost an minimize attack vectors.
-
+    
+    // TODO: setters to update Carrot metadata
+    // be cautious how does this affect balances and vesting?
 }
