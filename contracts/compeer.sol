@@ -3,10 +3,10 @@ pragma solidity ^0.8.0;
 // TODO: is 0.8.0 wise now that I've stopped return arrays of structs?
 
 /**
- * @title Carrot Contract
+ * @title Compeer Contract
  * @author Will Hennessy
  */
-contract Carrot {
+contract Compeer {
     
     /// @dev Contract design follows the one-to-many model with one Funder related to many VestingCarrots
     /// https://medium.com/robhitchens/enforcing-referential-integrity-in-ethereum-smart-contracts-a9ab1427ff42
