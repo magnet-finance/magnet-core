@@ -68,8 +68,10 @@ contract Compeer {
 
     /// @notice adminFunders[admin] returns list of all Funders for whom admin is admin.
     mapping (address => address[]) public adminFunders;
-    /// @notice admins[admin][funder] = true if user is an admin for this funder.
-    // mapping (address => mapping (address => bool)) public admins;
+    /// TODO: don't think I need the above mapping
+
+    /// @notice isAdmin[admin][funder] = true if admin is an admin for this funder.
+    mapping (address => mapping (address => bool)) public isAdmin;
 
 
     /// @notice An event thats emitted when a new Funder is registered
@@ -117,6 +119,7 @@ contract Compeer {
         for (uint i = 0; i < _admins.length; i++) {
             // TODO: does funder need to be in admin? is funder allowed to be admin?
             adminFunders[_admins[i]].push(msg.sender);
+            isAdmin[_admins[i]][msg.sender] = true;
         }
 
         emit FunderRegistered(msg.sender, fundersList.length - 1);
@@ -234,6 +237,16 @@ contract Compeer {
     /// @notice Get all carrots belonging to _recipient
     function getCarrotsByRecipient(address _recipient) public view returns (uint[] memory) {
         return recipientToVestingCarrotIds[_recipient];
+    }
+
+    function getCarrotIdsOfFunder(address _funder) public view returns (uint[] memory) {
+      require(isFunder(_funder), "Not a funder");
+      return funders[_funder].carrotIds;
+    }
+
+    function getAdminsOfFunder(address _funder) public view returns (address[] memory) {
+      require(isFunder(_funder), "Not a funder");
+      return funders[_funder].admins;
     }
     
     /// @notice Get all Funders for this _admin is admin
