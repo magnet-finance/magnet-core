@@ -57,3 +57,11 @@ allFiredEvents
 # buidler
 cache
 artifacts
+
+# yarn
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
