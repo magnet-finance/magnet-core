@@ -6,6 +6,7 @@ import Compeer from '../build/Compeer.json';
 use(solidity);
 
 const USDC_address = utils.getAddress('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48');
+const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
 
 function getTimeInSeconds() {
   return Math.floor(new Date().getTime() / 1000)
@@ -165,6 +166,22 @@ describe('Compeer', () => {
 
       await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
         .to.be.revertedWith('Must register as funder first');
+    });
+
+    it('Revert if recipient is zero address', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      let recipient = zero_address;
+      let token = USDC_address;
+      let now = getTimeInSeconds();
+      let startTime = now +2 ;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 4;
+      let endTime = now + 6;
+      let message = "Message 1";
+
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Recipient cant be the zero address');
     });
 
     it('Revert if startTime is in the past', async () => {

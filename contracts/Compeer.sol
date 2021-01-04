@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
-pragma solidity ^0.8.0;
-// TODO: is 0.8.0 wise now that I've stopped return arrays of structs?
+pragma solidity ^0.6.12;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
 
 /**
  * @title Compeer Contract
  * @author Will Hennessy
  */
 contract Compeer {
+        using SafeERC20 for IERC20;
+        using SafeMath for uint;
     
     /// @dev Contract design follows the one-to-many model with one Funder related to many VestingCarrots
     /// https://medium.com/robhitchens/enforcing-referential-integrity-in-ethereum-smart-contracts-a9ab1427ff42
@@ -138,10 +143,11 @@ contract Compeer {
         string calldata _message)
     external returns (uint) {
         require(isFunder(msg.sender), "Must register as funder first");
+        require(_recipient != address(0), "Recipient cant be the zero address");
         require(_startTime >= block.timestamp, "Start time is in the past");
         require(_cliffTime >= _startTime, "Cliff time must be >= start time");
         require(_endTime > _startTime && _endTime > _cliffTime, "End time must be > start time and cliff time");
-        require(_vestingPeriodLength <= (_endTime - _startTime), "Period must be < duration");
+        require(_vestingPeriodLength <= (_endTime.sub(_startTime)), "Period must be < duration");
         require(_vestingPeriodLength > 0, "Vesting Period must be >0");
         require(_amountPerPeriod > 0, "Amount must be >0");
         
@@ -167,19 +173,28 @@ contract Compeer {
         return nextVestingCarrotId-1;
     }
 
-    // @notice Deposit funds to N vesting carrots
-    function deposit(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts, address[] calldata _tokenIds) external payable {
-        // TODO: modifier only funder
-        // require all three arrays are the same length
-        // for each entry, 
-            // require creator is creator of this carrot
-            // transfer the funds into this contract
-            // add to balance. (if balance was negative, pay out immediately?)
-            // create an internal-only helper function that takes 1 of each param instead of array
-            // emit Deposited event (1 or N times?)
+    /// @notice Deposit funds to N vesting carrots
+    function deposit(uint _vestingCarrotId, uint _amount, address _tokenId) external payable {
+        require(isCarrot(_vestingCarrotId), "Carrot does not exist");
+        require(isFunderOfCarrot(msg.sender, _vestingCarrotId), "Only the funder can deposit to a carrot");
+        require(_amount > 0, "amount is zero");
+
+        // TODO: transfer the funds into this contract
+        // IERC20(_tokenId).safeTransferFrom(msg.sender, address(this), _amount);
+
+        // add to balance. (if balance was negative, pay out immediately?)
+        // create an internal-only helper function that takes 1 of each param instead of array
+        // emit Deposited event (1 or N times?)
     }
 
-    // @notice Withdraw funds from N vesting carrots
+    /// @notice Deposit funds to N vesting carrots
+    function depositMany(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts, address[] calldata _tokenIds) external payable {
+        // TODO
+        // require all three arrays are the same length
+        // for each entry...
+    }
+
+    /// @notice Withdraw funds from N vesting carrots
     function withdraw(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts) external {
         // TODO: modifier only owner/recipient == msg.sender
         // require amount is <= balance (even if user is owed more)
@@ -189,10 +204,11 @@ contract Compeer {
         // execute the eth/ERC20 transfer
         // update balance
         // update amountWithdrawn
+        // todo: what happens if an ERC20 changes its decimal from 18 to some other number? do i need to update my balances?
         // emit Withdawn event
     }
     
-    // @notice Terminate a carrot
+    /// @notice Terminate a carrot
     function terminateCarrot(uint carrotId) external {
         // TODO: implement terminate
         // consider deletion. Because zeros don’t take up any space, storage can be reclaimed by setting a value to zero. This is incentivized in smart contracts with a gas refund when you change a value to zero.
@@ -208,6 +224,10 @@ contract Compeer {
     
     function isCarrot(uint _carrotId) public view returns (bool) {
         return _carrotId < nextVestingCarrotId;
+    }
+
+    function isFunderOfCarrot(address _funder, uint _carrotId) public view returns (bool) {
+        return vestingCarrots[_carrotId].funder == _funder;
     }
     
     function getFunderCount() public view returns (uint) {
@@ -234,12 +254,13 @@ contract Compeer {
     function getCarrotsByRecipient(address _recipient) public view returns (uint[] memory) {
         return recipientToVestingCarrotIds[_recipient];
     }
-
+    /// @notice Get all carrots funded by _funder
     function getCarrotIdsByFunder(address _funder) public view returns (uint[] memory) {
       require(isFunder(_funder), "Not a funder");
       return funders[_funder].carrotIds;
     }
 
+    /// @notice Get all admins of _funder
     function getAdminsByFunder(address _funder) public view returns (address[] memory) {
       require(isFunder(_funder), "Not a funder");
       return funders[_funder].admins;
