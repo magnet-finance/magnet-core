@@ -7,6 +7,10 @@ use(solidity);
 
 const USDC_address = utils.getAddress('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48');
 
+function getTimeInSeconds() {
+  return Math.floor(new Date().getTime() / 1000)
+}
+
 describe('Compeer', () => {
   async function fixture([wallet, other]: Wallet[], provider: MockProvider) {
     const contract = await deployContract(wallet, Compeer);
@@ -79,6 +83,21 @@ describe('Compeer', () => {
         .to.be.revertedWith('Funder already exists');    
     });
 
+    it('Is not funder', async () => {
+      const {contract, wallet, other} = await loadFixture(fixture);
+      expect(await contract.isFunder(wallet.address)).to.be.equal(false);
+    });
+
+    it('Reverts if funder does not exist', async () => {
+      const {contract, wallet, other} = await loadFixture(fixture);
+      await expect(contract.getCarrotCountByFunder(wallet.address))
+        .to.be.revertedWith('Not a funder');
+      await expect(contract.getCarrotIdsByFunder(wallet.address))
+        .to.be.revertedWith('Not a funder');
+      await expect(contract.getAdminsByFunder(wallet.address))
+        .to.be.revertedWith('Not a funder');
+    });
+
     // TODO: add test to prevent or require funder from being in admins array
   });
 
@@ -87,12 +106,12 @@ describe('Compeer', () => {
       const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = other.address;
       let token = USDC_address;
-      let now = new Date().getTime();
-      let startTime = now + 2000;
-      let vestingPeriodLength = 1000;
+      let now = getTimeInSeconds();
+      let startTime = now + 2;
+      let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 4000;
-      let endTime = now + 6000;
+      let cliffTime = now + 4;
+      let endTime = now + 6;
       let message = "Message 1";
 
       let expectedId = await contract.getCarrotCount();
@@ -121,6 +140,142 @@ describe('Compeer', () => {
         .to.equal(expectedId);
     });
 
+    it('Is not carrot', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      expect(await contract.isCarrot(0)).to.be.equal(false);
+    });
+
+    it('Reverts if carrot does not exist', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      await expect(contract.getBalance(0))
+        .to.be.revertedWith('Carrot does not exist');
+    });
+
+    it('Revert Mint if sender has not registered as funder', async () => {
+      const {contract, wallet, other} = await loadFixture(fixture);
+      let recipient = other.address;
+      let token = USDC_address;
+      let now = getTimeInSeconds();
+      let startTime = now + 2;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 4;
+      let endTime = now + 6;
+      let message = "Message 1";
+
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Must register as funder first');
+    });
+
+    it('Revert if startTime is in the past', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      let recipient = other.address;
+      let token = USDC_address;
+      let now = getTimeInSeconds();
+      let startTime = now - 1;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 4;
+      let endTime = now + 6;
+      let message = "Message 1";
+
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Start time is in the past');
+
+      let zeroTime = 0;
+      await expect(contract.mintVestingCarrot(recipient, token, zeroTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Start time is in the past');
+    });
+
+    it('Revert if cliffTime is invalid', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      let recipient = other.address;
+      let token = USDC_address;
+      let now = getTimeInSeconds();
+      let startTime = now +2 ;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now - 1;
+      let endTime = now + 6;
+      let message = "Message 1";
+
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Cliff time must be >= start time');
+
+      let zeroTime = 0;
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, zeroTime, endTime, message))
+        .to.be.revertedWith('Cliff time must be >= start time');
+    });
+
+    it('Revert if endTime is in the past', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      let recipient = other.address;
+      let token = USDC_address;
+      let now = getTimeInSeconds();
+      let startTime = now +2 ;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 4;
+      let endTime = now - 1;
+      let message = "Message 1";
+
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('End time must be > start time and cliff time');
+
+      let zeroTime = 0;
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, zeroTime, message))
+        .to.be.revertedWith('End time must be > start time and cliff time');
+    });
+
+    it('Revert if vesting period is longer than duration', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      let recipient = other.address;
+      let token = USDC_address;
+      let now = getTimeInSeconds();
+      let startTime = now +2 ;
+      let vestingPeriodLength = 5;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 4;
+      let endTime = now + 6;
+      let message = "Message 1";
+
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Period must be < duration');
+    });
+
+    it('Revert if vesting period is zero', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      let recipient = other.address;
+      let token = USDC_address;
+      let now = getTimeInSeconds();
+      let startTime = now +2 ;
+      let vestingPeriodLength = 0;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 4;
+      let endTime = now + 6;
+      let message = "Message 1";
+
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Vesting Period must be >0');
+    });
+
+    it('Revert if amount per period is zero', async () => {
+      const {contract, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      let recipient = other.address;
+      let token = USDC_address;
+      let now = getTimeInSeconds();
+      let startTime = now +2 ;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 0;
+      let cliffTime = now + 4;
+      let endTime = now + 6;
+      let message = "Message 1";
+
+      await expect(contract.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Amount must be >0');
+    });
+
+    // TODO: prevent recipient being zero address?
   });
 
   describe('Admin', () => {

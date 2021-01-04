@@ -139,9 +139,11 @@ contract Compeer {
     external returns (uint) {
         require(isFunder(msg.sender), "Must register as funder first");
         require(_startTime >= block.timestamp, "Start time is in the past");
-        require(_cliffTime >= block.timestamp, "Cliff time is in the past");
-        require(_endTime >= block.timestamp, "End time is in the past");
-        require(_vestingPeriodLength <= (_endTime - _startTime), "Vesting Period is longer than duration");
+        require(_cliffTime >= _startTime, "Cliff time must be >= start time");
+        require(_endTime > _startTime && _endTime > _cliffTime, "End time must be > start time and cliff time");
+        require(_vestingPeriodLength <= (_endTime - _startTime), "Period must be < duration");
+        require(_vestingPeriodLength > 0, "Vesting Period must be >0");
+        require(_amountPerPeriod > 0, "Amount must be >0");
         
         vestingCarrots[nextVestingCarrotId] = VestingCarrot({
             recipient: _recipient,
