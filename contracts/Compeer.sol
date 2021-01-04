@@ -217,15 +217,9 @@ contract Compeer {
     }
     
     /// @notice Get the number of carrots created by the funder.    
-    function getCarrotCount(address _funder) public view returns (uint) {
+    function getCarrotCountByFunder(address _funder) public view returns (uint) {
       require(isFunder(_funder), "Not a funder");
       return funders[_funder].carrotIds.length;
-    }
-    
-    /// @notice Get all carrots created by the funder.
-    function getCarrotIds(address _funder) public view returns (uint[] memory) {
-      require(isFunder(_funder), "Not a funder");
-      return funders[_funder].carrotIds;
     }
 
     // @notice Get the balance of funder ID
@@ -239,12 +233,12 @@ contract Compeer {
         return recipientToVestingCarrotIds[_recipient];
     }
 
-    function getCarrotIdsOfFunder(address _funder) public view returns (uint[] memory) {
+    function getCarrotIdsByFunder(address _funder) public view returns (uint[] memory) {
       require(isFunder(_funder), "Not a funder");
       return funders[_funder].carrotIds;
     }
 
-    function getAdminsOfFunder(address _funder) public view returns (address[] memory) {
+    function getAdminsByFunder(address _funder) public view returns (address[] memory) {
       require(isFunder(_funder), "Not a funder");
       return funders[_funder].admins;
     }
