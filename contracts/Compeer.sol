@@ -173,22 +173,25 @@ contract Compeer {
         return nextVestingCarrotId-1;
     }
 
-    /// @notice Deposit funds to N vesting carrots
-    function deposit(uint _vestingCarrotId, uint _amount, address _tokenId) external payable {
+    /// @notice Deposit to a vesting carrot
+    function deposit(uint _vestingCarrotId, uint _amount, address _tokenId) public returns(bool) {
         require(isCarrot(_vestingCarrotId), "Carrot does not exist");
         require(isFunderOfCarrot(msg.sender, _vestingCarrotId), "Only the funder can deposit to a carrot");
         require(_amount > 0, "amount is zero");
 
-        // TODO: transfer the funds into this contract
-        // IERC20(_tokenId).safeTransferFrom(msg.sender, address(this), _amount);
+        VestingCarrot storage carrot = vestingCarrots[_vestingCarrotId];
+        require(carrot.token == _tokenId, "Deposit token address does not match carrot token");
+        carrot.balance = carrot.balance.add(_amount);
 
-        // add to balance. (if balance was negative, pay out immediately?)
-        // create an internal-only helper function that takes 1 of each param instead of array
-        // emit Deposited event (1 or N times?)
+        IERC20(_tokenId).safeTransferFrom(msg.sender, address(this), _amount);
+
+        // TODO: if balance was negative, pay out immediately?
+        emit Deposited(msg.sender, _vestingCarrotId, _amount);
+        return true;
     }
 
-    /// @notice Deposit funds to N vesting carrots
-    function depositMany(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts, address[] calldata _tokenIds) external payable {
+    /// @notice Deposit funds to multiple vesting carrots in a single transaction
+    function depositMany(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts, address[] calldata _tokenIds) external {
         // TODO
         // require all three arrays are the same length
         // for each entry...
@@ -237,6 +240,11 @@ contract Compeer {
     function getCarrotCount() public view returns (uint) {
         return nextVestingCarrotId;
     }
+
+    function getFunderOfCarrot(uint _carrotId) public view returns (address) {
+        require(isCarrot(_carrotId), "Carrot does not exist");
+        return vestingCarrots[_carrotId].funder;
+    }
     
     /// @notice Get the number of carrots created by the funder.    
     function getCarrotCountByFunder(address _funder) public view returns (uint) {
@@ -244,7 +252,7 @@ contract Compeer {
       return funders[_funder].carrotIds.length;
     }
 
-    // @notice Get the balance of funder ID
+    /// @notice Get the balance of funder ID
     function getBalance(uint _carrotId) public view returns (uint) {
         require(isCarrot(_carrotId), "Carrot does not exist");
         return vestingCarrots[_carrotId].balance;
