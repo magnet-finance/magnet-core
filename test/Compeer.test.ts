@@ -14,7 +14,7 @@ function getTimeInSeconds() {
   return Math.floor(new Date().getTime() / 1000)
 }
 
-describe('Compeer', () => {
+describe('Compeer', function() {
 
   async function fixtureBase([wallet, other]: Wallet[], provider: MockProvider) {
     const compeer = await deployContract(wallet, Compeer);
@@ -60,14 +60,14 @@ describe('Compeer', () => {
   // Positive tests: given valid input, performs as expected
   // Negative tests: given invalid input, captures errors
 
-  describe('Deploy', () => {
-    it('Contracts should be defined', async () => {
+  describe('Deploy', function() {
+    it('Contracts should be defined', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
       assert.isDefined(compeer);
       assert.isDefined(mockERC20);
     });
 
-    it('State variables initialized to zero', async () => {
+    it('State variables initialized to zero', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
       expect(await compeer.nextVestingCarrotId()).to.equal(0);
       expect(await compeer.getFunderCount()).to.equal(0);
@@ -77,8 +77,8 @@ describe('Compeer', () => {
     });
   });
 
-  describe('Funder', () => {
-    it('Register funder with valid data', async () => {
+  describe('Funder', function() {
+    it('Register funder with valid data', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
       let admins = [other.address];
       let name = "Funder 1";
@@ -102,7 +102,7 @@ describe('Compeer', () => {
       expect(await compeer.isAdmin(other.address, wallet.address)).to.be.equal(true);
     });
 
-    it('Reverts if sender is already registered as a funder', async () => {
+    it('Reverts if sender is already registered as a funder', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
       let admins = [other.address];
       let name = "Funder 1";
@@ -114,12 +114,12 @@ describe('Compeer', () => {
         .to.be.revertedWith('Funder already exists');    
     });
 
-    it('Is not funder', async () => {
+    it('Is not funder', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
       expect(await compeer.isFunder(wallet.address)).to.be.equal(false);
     });
 
-    it('Reverts if funder does not exist', async () => {
+    it('Reverts if funder does not exist', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
       await expect(compeer.getCarrotCountByFunder(wallet.address))
         .to.be.revertedWith('Not a funder');
@@ -132,8 +132,8 @@ describe('Compeer', () => {
     // TODO: add test to prevent or require funder from being in admins array
   });
 
-  describe('VestingCarrot', () => {
-    it('Mint a VestingCarrot with valid data', async () => {
+  describe('VestingCarrot', function() {
+    it('Mint a VestingCarrot with valid data', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = other.address;
       let token = mockERC20.address;
@@ -171,18 +171,18 @@ describe('Compeer', () => {
         .to.equal(expectedId);
     });
 
-    it('Is not carrot', async () => {
+    it('Is not carrot', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       expect(await compeer.isCarrot(0)).to.be.equal(false);
     });
 
-    it('Reverts if carrot does not exist', async () => {
+    it('Reverts if carrot does not exist', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       await expect(compeer.getBalance(0))
         .to.be.revertedWith('Carrot does not exist');
     });
 
-    it('Revert Mint if sender has not registered as funder', async () => {
+    it('Revert Mint if sender has not registered as funder', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
       let recipient = other.address;
       let token = mockERC20.address;
@@ -198,7 +198,7 @@ describe('Compeer', () => {
         .to.be.revertedWith('Must register as funder first');
     });
 
-    it('Revert if recipient is zero address', async () => {
+    it('Revert if recipient is zero address', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = zero_address;
       let token = mockERC20.address;
@@ -214,7 +214,7 @@ describe('Compeer', () => {
         .to.be.revertedWith('Recipient cant be the zero address');
     });
 
-    it('Revert if startTime is in the past', async () => {
+    it('Revert if startTime is in the past', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = other.address;
       let token = mockERC20.address;
@@ -234,7 +234,7 @@ describe('Compeer', () => {
         .to.be.revertedWith('Start time is in the past');
     });
 
-    it('Revert if cliffTime is invalid', async () => {
+    it('Revert if cliffTime is invalid', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = other.address;
       let token = mockERC20.address;
@@ -254,7 +254,7 @@ describe('Compeer', () => {
         .to.be.revertedWith('Cliff time must be >= start time');
     });
 
-    it('Revert if endTime is in the past', async () => {
+    it('Revert if endTime is in the past', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = other.address;
       let token = mockERC20.address;
@@ -274,7 +274,7 @@ describe('Compeer', () => {
         .to.be.revertedWith('End time must be > start time and cliff time');
     });
 
-    it('Revert if vesting period is longer than duration', async () => {
+    it('Revert if vesting period is longer than duration', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = other.address;
       let token = mockERC20.address;
@@ -290,7 +290,7 @@ describe('Compeer', () => {
         .to.be.revertedWith('Period must be < duration');
     });
 
-    it('Revert if vesting period is zero', async () => {
+    it('Revert if vesting period is zero', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = other.address;
       let token = mockERC20.address;
@@ -306,7 +306,7 @@ describe('Compeer', () => {
         .to.be.revertedWith('Vesting Period must be >0');
     });
 
-    it('Revert if amount per period is zero', async () => {
+    it('Revert if amount per period is zero', async function() {
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
       let recipient = other.address;
       let token = mockERC20.address;
@@ -325,7 +325,7 @@ describe('Compeer', () => {
     // TODO: prevent recipient being zero address?
   });
 
-  describe('Deposit - Vesting Carrot', () => {
+  describe('Deposit - Vesting Carrot', function() {
     it('Deposit to a VestingCarrot with valid data', async function() {
       this.timeout(4000);
       const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureOneFunderAndCarrot);
@@ -352,7 +352,7 @@ describe('Compeer', () => {
   // try to deposit wrong token
   // reject a non-funder attempt to deposit
 
-  // describe('Admin', () => {
+  // describe('Admin', function() {
   //   // TODO: test isAdmins mapping, adminFunder array, helper function
   // });
 
