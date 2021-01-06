@@ -1,11 +1,14 @@
-import {assert, expect, should, use} from 'chai';
+import { ethers, waffle } from 'hardhat';
+import {assert, expect, use} from 'chai';
 import {Contract, utils, Wallet} from 'ethers';
-import {loadFixture, deployContract, deployMockContract, MockProvider, solidity} from 'ethereum-waffle';
-import IERC20 from '../build/IERC20.json';
-import Compeer from '../build/Compeer.json';
+// NO: hardhat sign explicitly warns against importing these from ethereum-waffle
+//import {loadFixture, deployContract, deployMockContract, MockProvider, solidity} from 'ethereum-waffle';
+const IERC20 = require('../build/@openzeppelin/contracts/token/ERC20/IERC20.sol/IERC20.json');
+
+const {loadFixture, deployContract, deployMockContract, solidity } = waffle;
+const provider = waffle.provider;
 
 use(solidity);
-// var artifacts = require('truffle-artifactor');
 // const ERC20Mock = artifacts.require("./ERC20Mock.sol"); // add into folder if you need it
 
 const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
@@ -16,45 +19,54 @@ function getTimeInSeconds() {
 
 describe('Compeer', function() {
 
-  async function fixtureBase([wallet, other]: Wallet[], provider: MockProvider) {
-    const compeer = await deployContract(wallet, Compeer);
-    const mockERC20 = await deployMockContract(wallet, IERC20.abi);
-    return {compeer, mockERC20, wallet, other};
+  async function fixtureBase() {
+    const [owner, addr1] = await ethers.getSigners();
+    const Compeer = await ethers.getContractFactory("Compeer");
+    const compeer = await Compeer.deploy();
+    await compeer.deployed();
+    const mockERC20 = await deployMockContract(owner, IERC20.abi);
+    return {compeer, mockERC20, owner, addr1};
   }
 
-  async function fixtureRegisterFunder([wallet, other]: Wallet[], provider: MockProvider) {
-    const compeer = await deployContract(wallet, Compeer);
-    const mockERC20 = await deployMockContract(wallet, IERC20.abi);
-    let admins = [other.address];
+  async function fixtureRegisterFunder() {
+    const [owner, addr1] = await ethers.getSigners();
+    const Compeer = await ethers.getContractFactory("Compeer");
+    const compeer = await Compeer.deploy();
+    await compeer.deployed();
+    const mockERC20 = await deployMockContract(owner, IERC20.abi);
+    let admins = [addr1.address];
     let name = "Funder 1";
     let description = "Description 1";
     let imageUrl = "imageUrl 1";
     await compeer.registerFunder(admins, name, description, imageUrl);
-    return {compeer, mockERC20, wallet, other};
+    return {compeer, mockERC20, owner, addr1};
   }
 
-  async function fixtureOneFunderAndCarrot([wallet, other]: Wallet[], provider: MockProvider) {
-    const compeer = await deployContract(wallet, Compeer);
-    const mockERC20 = await deployMockContract(wallet, IERC20.abi);
+  async function fixtureOneFunderAndCarrot() {
+    const [owner, addr1] = await ethers.getSigners();
+    const Compeer = await ethers.getContractFactory("Compeer");
+    const compeer = await Compeer.deploy();
+    await compeer.deployed();
+    const mockERC20 = await deployMockContract(owner, IERC20.abi);
     
-    let admins = [other.address];
+    let admins = [addr1.address];
     let name = "Funder 1";
     let description = "Description 1";
     let imageUrl = "imageUrl 1";
     await compeer.registerFunder(admins, name, description, imageUrl);
 
-    let recipient = other.address;
+    let recipient = addr1.address;
     let token = mockERC20.address;
     let now = getTimeInSeconds();
-    let startTime = now + 2;
+    let startTime = now + 20;
     let vestingPeriodLength = 1;
     let amountPerPeriod = 1;
-    let cliffTime = now + 4;
-    let endTime = now + 6;
+    let cliffTime = now + 40;
+    let endTime = now + 60;
     let message = "Message 1";
     await compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
 
-    return {compeer, mockERC20, wallet, other};
+    return {compeer, mockERC20, owner, addr1};
   }
 
   // Positive tests: given valid input, performs as expected
@@ -62,16 +74,16 @@ describe('Compeer', function() {
 
   describe('Deploy', function() {
     it('Contracts should be defined', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
+      const {compeer, mockERC20, owner, addr1} = await waffle.loadFixture(fixtureBase);
       assert.isDefined(compeer);
       assert.isDefined(mockERC20);
     });
 
     it('State variables initialized to zero', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
+      const {compeer, mockERC20, owner, addr1} = await waffle.loadFixture(fixtureBase);
       expect(await compeer.nextVestingCarrotId()).to.equal(0);
       expect(await compeer.getFunderCount()).to.equal(0);
-      expect(await compeer.isFunder(wallet.address)).to.be.equal(false);
+      expect(await compeer.isFunder(owner.address)).to.be.equal(false);
       expect(await compeer.getCarrotCount()).to.equal(0);
       expect(await compeer.isCarrot(0)).to.be.equal(false);
     });
@@ -79,8 +91,8 @@ describe('Compeer', function() {
 
   describe('Funder', function() {
     it('Register funder with valid data', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
-      let admins = [other.address];
+      const {compeer, mockERC20, owner, addr1} = await waffle.loadFixture(fixtureBase);
+      let admins = [addr1.address];
       let name = "Funder 1";
       let description = "Description 1";
       let imageUrl = "imageUrl 1";
@@ -88,23 +100,23 @@ describe('Compeer', function() {
       let expectedId = await compeer.getFunderCount();
       await expect(compeer.registerFunder(admins, name, description, imageUrl))
         .to.emit(compeer, 'FunderRegistered')
-        .withArgs(wallet.address, expectedId);
+        .withArgs(owner.address, expectedId);
 
-      let funder = await compeer.funders(wallet.address);
+      let funder = await compeer.funders(owner.address);
       expect(funder.id).to.equal(0);
       expect(funder.name).to.equal(name);
-      expect(funder.funder).to.equal(wallet.address);
+      expect(funder.funder).to.equal(owner.address);
       expect(funder.description).to.equal(description);
       expect(await compeer.getFunderCount()).to.equal(1);
-      expect(await compeer.isFunder(wallet.address)).to.be.equal(true);
-      expect(await compeer.getCarrotIdsByFunder(wallet.address)).to.eql([]);
-      expect(await compeer.getAdminsByFunder(wallet.address)).to.eql(admins);
-      expect(await compeer.isAdmin(other.address, wallet.address)).to.be.equal(true);
+      expect(await compeer.isFunder(owner.address)).to.be.equal(true);
+      expect(await compeer.getCarrotIdsByFunder(owner.address)).to.eql([]);
+      expect(await compeer.getAdminsByFunder(owner.address)).to.eql(admins);
+      expect(await compeer.isAdmin(addr1.address, owner.address)).to.be.equal(true);
     });
 
     it('Reverts if sender is already registered as a funder', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
-      let admins = [other.address];
+      const {compeer, mockERC20, owner, addr1} = await waffle.loadFixture(fixtureBase);
+      let admins = [addr1.address];
       let name = "Funder 1";
       let description = "Description 1";
       let imageUrl = "imageUrl 1";
@@ -115,17 +127,17 @@ describe('Compeer', function() {
     });
 
     it('Is not funder', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
-      expect(await compeer.isFunder(wallet.address)).to.be.equal(false);
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureBase);
+      expect(await compeer.isFunder(owner.address)).to.be.equal(false);
     });
 
     it('Reverts if funder does not exist', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
-      await expect(compeer.getCarrotCountByFunder(wallet.address))
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureBase);
+      await expect(compeer.getCarrotCountByFunder(owner.address))
         .to.be.revertedWith('Not a funder');
-      await expect(compeer.getCarrotIdsByFunder(wallet.address))
+      await expect(compeer.getCarrotIdsByFunder(owner.address))
         .to.be.revertedWith('Not a funder');
-      await expect(compeer.getAdminsByFunder(wallet.address))
+      await expect(compeer.getAdminsByFunder(owner.address))
         .to.be.revertedWith('Not a funder');
     });
 
@@ -133,27 +145,43 @@ describe('Compeer', function() {
   });
 
   describe('VestingCarrot', function() {
-    it('Mint a VestingCarrot with valid data', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
-      let recipient = other.address;
+    it('Revert Mint if sender has not registered as funder', async function() {
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureBase);
+      let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 2;
+      let startTime = now + 20;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 4;
-      let endTime = now + 6;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
+      let message = "Message 1";
+
+      await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.be.revertedWith('Must register as funder first');
+    });
+
+    it('Mint a VestingCarrot with valid data', async function() {
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + 20;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
       let message = "Message 1";
 
       let expectedId = await compeer.getCarrotCount();
       await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
         .to.emit(compeer, 'VestingCarrotMinted')
-        .withArgs(recipient, wallet.address, expectedId);
+        .withArgs(recipient, owner.address, expectedId);
 
       let carrot = await compeer.vestingCarrots(expectedId);
       expect(carrot.recipient).to.equal(recipient);
       expect(carrot.token).to.equal(token);
-      expect(carrot.funder).to.equal(wallet.address);
+      expect(carrot.funder).to.equal(owner.address);
       expect(carrot.id).to.equal(expectedId);
       expect(carrot.startTime).to.equal(startTime);
       expect(carrot.vestingPeriodLength).to.equal(vestingPeriodLength);
@@ -165,49 +193,33 @@ describe('Compeer', function() {
       expect(await compeer.isCarrot(expectedId)).to.be.equal(true);
       expect(await compeer.getCarrotCount()).to.equal(1);
       expect(await compeer.getBalance(expectedId)).to.equal(0);
-      expect(await compeer.getCarrotCountByFunder(wallet.address)).to.be.equal(1);
-      expect((await compeer.getCarrotIdsByFunder(wallet.address))[0]).to.equal(0);
+      expect(await compeer.getCarrotCountByFunder(owner.address)).to.be.equal(1);
+      expect((await compeer.getCarrotIdsByFunder(owner.address))[0]).to.equal(0);
       expect((await compeer.getCarrotsByRecipient(recipient))[0])
         .to.equal(expectedId);
     });
 
     it('Is not carrot', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       expect(await compeer.isCarrot(0)).to.be.equal(false);
     });
 
     it('Reverts if carrot does not exist', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       await expect(compeer.getBalance(0))
         .to.be.revertedWith('Carrot does not exist');
     });
 
-    it('Revert Mint if sender has not registered as funder', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureBase);
-      let recipient = other.address;
-      let token = mockERC20.address;
-      let now = getTimeInSeconds();
-      let startTime = now + 2;
-      let vestingPeriodLength = 1;
-      let amountPerPeriod = 1;
-      let cliffTime = now + 4;
-      let endTime = now + 6;
-      let message = "Message 1";
-
-      await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
-        .to.be.revertedWith('Must register as funder first');
-    });
-
     it('Revert if recipient is zero address', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       let recipient = zero_address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now +2 ;
+      let startTime = now + 20;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 4;
-      let endTime = now + 6;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
       let message = "Message 1";
 
       await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -215,15 +227,15 @@ describe('Compeer', function() {
     });
 
     it('Revert if startTime is in the past', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
-      let recipient = other.address;
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now - 1;
+      let startTime = now - 10;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 4;
-      let endTime = now + 6;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
       let message = "Message 1";
 
       await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -235,15 +247,15 @@ describe('Compeer', function() {
     });
 
     it('Revert if cliffTime is invalid', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
-      let recipient = other.address;
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now +2 ;
+      let startTime = now + 20;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now - 1;
-      let endTime = now + 6;
+      let cliffTime = now - 10;
+      let endTime = now + 60;
       let message = "Message 1";
 
       await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -255,15 +267,15 @@ describe('Compeer', function() {
     });
 
     it('Revert if endTime is in the past', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
-      let recipient = other.address;
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now +2 ;
+      let startTime = now + 20;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 4;
-      let endTime = now - 1;
+      let cliffTime = now + 40;
+      let endTime = now - 10;
       let message = "Message 1";
 
       await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -275,15 +287,15 @@ describe('Compeer', function() {
     });
 
     it('Revert if vesting period is longer than duration', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
-      let recipient = other.address;
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now +2 ;
-      let vestingPeriodLength = 5;
+      let startTime = now + 20;
+      let vestingPeriodLength = 50;
       let amountPerPeriod = 1;
-      let cliffTime = now + 4;
-      let endTime = now + 6;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
       let message = "Message 1";
 
       await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -291,15 +303,15 @@ describe('Compeer', function() {
     });
 
     it('Revert if vesting period is zero', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
-      let recipient = other.address;
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now +2 ;
+      let startTime = now + 20;
       let vestingPeriodLength = 0;
       let amountPerPeriod = 1;
-      let cliffTime = now + 4;
-      let endTime = now + 6;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
       let message = "Message 1";
 
       await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -307,15 +319,15 @@ describe('Compeer', function() {
     });
 
     it('Revert if amount per period is zero', async function() {
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureRegisterFunder);
-      let recipient = other.address;
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now +2 ;
+      let startTime = now + 20;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 0;
-      let cliffTime = now + 4;
-      let endTime = now + 6;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
       let message = "Message 1";
 
       await expect(compeer.mintVestingCarrot(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -328,8 +340,8 @@ describe('Compeer', function() {
   describe('Deposit - Vesting Carrot', function() {
     it('Deposit to a VestingCarrot with valid data', async function() {
       this.timeout(4000);
-      const {compeer, mockERC20, wallet, other} = await loadFixture(fixtureOneFunderAndCarrot);
-      let expectedSender = wallet.address;
+      const {compeer, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndCarrot);
+      let expectedSender = owner.address;
       let expectedRecipient = compeer.address;
       let carrotId = await compeer.nextVestingCarrotId() - 1;
       let amount = 1000;
@@ -340,17 +352,20 @@ describe('Compeer', function() {
       await mockERC20.mock.transferFrom.returns(true);
       await expect(compeer.deposit(carrotId, amount, mockERC20.address))
         .to.emit(compeer, 'Deposited')
-        .withArgs(wallet.address, carrotId, amount);
-      expect("transferFrom").to.be.calledOnContractWith(mockERC20, [expectedSender, expectedRecipient, amount]);
+        .withArgs(owner.address, carrotId, amount);
+      
+      // Waffle's calledOnContractWith is not currently supported by Hardhat. (1/5/2021)
+      // expect("transferFrom").to.be.calledOnContractWith(mockERC20, [expectedSender, expectedRecipient, amount]);
 
       expect(await compeer.getBalance(carrotId)).to.equal(expectedBalance);
     });
-  });
 
-  // try to deposit 0
-  // deposit to make balance wrap - exceed int limit
-  // try to deposit wrong token
-  // reject a non-funder attempt to deposit
+    // TODO: add more tests for deposit()
+    // try to deposit 0
+    // deposit to make balance wrap - exceed int limit
+    // try to deposit wrong token
+    // reject a non-funder attempt to deposit
+  });
 
   // describe('Admin', function() {
   //   // TODO: test isAdmins mapping, adminFunder array, helper function
