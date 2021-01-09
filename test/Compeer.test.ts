@@ -1,17 +1,11 @@
-import { ethers, waffle } from 'hardhat';
+import {ethers, waffle} from 'hardhat';
 import {assert, expect, use} from 'chai';
-import {Contract, utils, Wallet} from 'ethers';
-// NO: hardhat sign explicitly warns against importing these from ethereum-waffle
-//import {loadFixture, deployContract, deployMockContract, MockProvider, solidity} from 'ethereum-waffle';
+import {utils} from 'ethers';
+
 const IERC20 = require('../build/@openzeppelin/contracts/token/ERC20/IERC20.sol/IERC20.json');
-
-const {loadFixture, deployContract, deployMockContract, solidity } = waffle;
-const provider = waffle.provider;
-
-use(solidity);
-// const ERC20Mock = artifacts.require("./ERC20Mock.sol"); // add into folder if you need it
-
 const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
+const {loadFixture, deployMockContract, solidity } = waffle;
+use(solidity);
 
 function getTimeInSeconds() {
   return Math.floor(new Date().getTime() / 1000)
