@@ -7,25 +7,25 @@ import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 
 /**
- * @title Compeer Contract
+ * @title Magnet Contract
  * @author Will Hennessy
  */
-contract Compeer {
+contract Magnet {
         using SafeERC20 for IERC20;
         using SafeMath for uint;
     
-    /// @dev Contract design follows the one-to-many model with one Funder related to many VestingCarrots
+    /// @dev Contract design follows the one-to-many model with one Funder related to many VestingMagnets
     /// https://medium.com/robhitchens/enforcing-referential-integrity-in-ethereum-smart-contracts-a9ab1427ff42
     
     /// @notice Record details for a Funder. 
     /// @dev This could be a DAO multisig, an individual, or an organization.
     /// @notice id - Internal ID of the funder
-    /// @notice carrotIds - IDs of all the VestingCarrots funded by this funder.
-    /// @notice funder - The wallet address who created this VestingCarrot and funds it. Only the funder can deposit funds into the VestingCarrot.
+    /// @notice magnetIds - IDs of all the VestingMagnets funded by this funder.
+    /// @notice funder - The wallet address who created this VestingMagnet and funds it. Only the funder can deposit funds into the VestingMagnet.
     /// @notice admins - List of addresses with admin power to execute non-monetary write transactions such as create, modify, and propose deposit.
     struct Funder {
         uint id; // TODO // supports the delete function
-        uint[] carrotIds;
+        uint[] magnetIds;
         address funder;
         address[] admins; // TODO: look into OpenZeppelin for the most secure way of handling admins.
         string name;
@@ -35,22 +35,22 @@ contract Compeer {
 
     /// @notice The Funder record corresponding to each address.
     mapping (address => Funder) public funders;
-    /// @notice List of all funders who have ever created a carrot.
+    /// @notice List of all funders who are registered.
     address[] public fundersList;
 
     /**
-     * @notice Record details for a Vesting Carrot
-     * @notice funder - The address of the funder who created and deposits to this carrot.
+     * @notice Record details for a Vesting Magnet
+     * @notice funder - The address of the funder who created and deposits to this magnet.
      * @notice startTime - The unix time at which vesting begins.
      * @notice vestingPeriodLength - The period of time (in seconds) between each vesting event. Set to 0 for real-time vesting.
      * @notice amountPerPeriod - The amount of token to vest to the recipient per period.
      * @notice cliffTime - Prior to this unix timestamp, tokens are vesting but not able to be withdrawn by recipient until this timestamp.
      * @notice endTime - The time at which vesting will stop.
      * @notice amountWithdrawn - Cumulative amount of token that has been withrawn by recipient since startTime.
-     * @notice balance - Current balance of token deposited by the Funder and allocated to this Carrot. Some portion of these funds may have vested already, but not yet withdrawn.
+     * @notice balance - Current balance of token deposited by the Funder and allocated to this Magnet. Some portion of these funds may have vested already, but not yet withdrawn.
      * @notice message - Optional message for the Funder to use. For example, to explain the purpose of this vesting package.
      */
-    struct VestingCarrot {
+    struct VestingMagnet {
         address recipient;
         address token;
         address funder;
@@ -65,12 +65,12 @@ contract Compeer {
         string message;
     }
 
-    /// @notice List of all VestingCarrots ordered by ID
-    mapping (uint => VestingCarrot) public vestingCarrots;
-    uint public nextVestingCarrotId;
+    /// @notice List of all VestingMagnets ordered by ID
+    mapping (uint => VestingMagnet) public vestingMagnets;
+    uint public nextVestingMagnetId;
 
-    /// @notice List of all VestingCarrots owned by a given address
-    mapping (address => uint[]) public recipientToVestingCarrotIds;
+    /// @notice List of all VestingMagnets owned by a given address
+    mapping (address => uint[]) public recipientToVestingMagnetIds;
 
     /// @notice adminFunders[admin] returns list of all Funders for whom admin is admin.
     mapping (address => address[]) public adminFunders;
@@ -81,23 +81,23 @@ contract Compeer {
 
 
     /// @notice An event thats emitted when a new Funder is registered
-    event FunderRegistered(address indexed funder, uint indexed vestingCarrotId);
+    event FunderRegistered(address indexed funder, uint indexed vestingMagnetId);
     
-    /// @notice An event thats emitted when a new VestingCarrot is minted
-    event VestingCarrotMinted(address indexed recipient, address indexed funder, uint indexed vestingCarrotId);
+    /// @notice An event thats emitted when a new VestingMagnet is minted
+    event VestingMagnetMinted(address indexed recipient, address indexed funder, uint indexed vestingMagnetId);
 
     /// @notice An event thats emitted when funds are deposited into the contract
-    event Deposited(address indexed from, uint indexed vestingCarrotId, uint amount);
+    event Deposited(address indexed from, uint indexed vestingMagnetId, uint amount);
     // TODO: emit token address too, not indexed. update unit test.
 
     /// @notice An event thats emitted when funds are withdrawn from the contract
-    event Withdrawn(address indexed to, uint indexed vestingCarrotId, address token, uint amount);
+    event Withdrawn(address indexed to, uint indexed vestingMagnetId, address token, uint amount);
 
-    // TODO: event FunderDeleted  (remember to only allow if zero carrots)
-    // TODO: event VestingCarrotTerminated
+    // TODO: event FunderDeleted  (remember to only allow if zero magnets)
+    // TODO: event VestingMagnetTerminated
 
     // TODO: event FunderUpdated
-    // TODO: event CarrotUpdated
+    // TODO: event MagnetUpdated
     
     // TODO: think about event logging
     // getPastEvents({ filter: funderId }) + fancy javascript math to calculate historicals
@@ -116,7 +116,7 @@ contract Compeer {
         fundersList.push(msg.sender);
         Funder storage f = funders[msg.sender];
         f.id = fundersList.length - 1;
-        // f.carrotIds is already init to an empty array.
+        // f.magnetIds is already init to an empty array.
         f.funder = msg.sender;
         f.admins = _admins;
         f.name = _name;
@@ -133,8 +133,8 @@ contract Compeer {
         return fundersList.length - 1;
     }
 
-    /// @notice Mint a new Vesting Carrot with 0 balance.
-    function mintVestingCarrot(
+    /// @notice Mint a new VestingMagnet with 0 balance.
+    function mintVestingMagnet(
         address _recipient,
         address _token,
         uint _startTime,
@@ -153,7 +153,7 @@ contract Compeer {
         require(_vestingPeriodLength > 0, "Vesting Period must be >0");
         require(_amountPerPeriod > 0, "Amount must be >0");
         
-        vestingCarrots[nextVestingCarrotId] = VestingCarrot({
+        vestingMagnets[nextVestingMagnetId] = VestingMagnet({
             recipient: _recipient,
             token: _token,
             funder: msg.sender,
@@ -168,95 +168,95 @@ contract Compeer {
             message: _message
         });
         
-        funders[msg.sender].carrotIds.push(nextVestingCarrotId);
-        recipientToVestingCarrotIds[_recipient].push(nextVestingCarrotId);
-        emit VestingCarrotMinted(_recipient, msg.sender, nextVestingCarrotId);
-        nextVestingCarrotId++;
-        return nextVestingCarrotId-1;
+        funders[msg.sender].magnetIds.push(nextVestingMagnetId);
+        recipientToVestingMagnetIds[_recipient].push(nextVestingMagnetId);
+        emit VestingMagnetMinted(_recipient, msg.sender, nextVestingMagnetId);
+        nextVestingMagnetId++;
+        return nextVestingMagnetId-1;
     }
 
-    /// @notice Deposit to a vesting carrot
-    function deposit(uint _vestingCarrotId, uint _amount, address _tokenId) public returns(bool) {
-        require(isCarrot(_vestingCarrotId), "Carrot does not exist");
-        require(isFunderOfCarrot(msg.sender, _vestingCarrotId), "Only the funder can deposit to a carrot");
+    /// @notice Deposit to a VestingMagnet
+    function deposit(uint _vestingMagnetId, uint _amount, address _tokenId) public returns(bool) {
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+        require(isFunderOfMagnet(msg.sender, _vestingMagnetId), "Only the funder can deposit to a magnet");
         require(_amount > 0, "amount is zero");
 
-        VestingCarrot storage carrot = vestingCarrots[_vestingCarrotId];
-        require(carrot.token == _tokenId, "Deposit token address does not match carrot token");
-        carrot.balance = carrot.balance.add(_amount);
+        VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
+        require(magnet.token == _tokenId, "Deposit token address does not match magnet token");
+        magnet.balance = magnet.balance.add(_amount);
 
         IERC20(_tokenId).safeTransferFrom(msg.sender, address(this), _amount);
-        emit Deposited(msg.sender, _vestingCarrotId, _amount);
+        emit Deposited(msg.sender, _vestingMagnetId, _amount);
         return true;
     }
 
-    /// @notice Deposit funds to multiple vesting carrots in a single transaction
-    function depositMany(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts, address[] calldata _tokenIds) external {
+    /// @notice Deposit funds to multiple VestingMagnets in a single transaction
+    function depositMany(uint[] calldata _vestingMagnetIds, uint[] calldata _amounts, address[] calldata _tokenIds) external {
         // TODO
         // require all three arrays are the same length
         // for each entry...
     }
 
-    /// @notice Withdraw funds from a vesting carrot. Called by recipient of the VestingCarrot.
-    function withdraw(uint _vestingCarrotId, uint _amount) public returns(bool) {
-        require(isCarrot(_vestingCarrotId), "Carrot does not exist");
-        VestingCarrot memory carrot = vestingCarrots[_vestingCarrotId];
-        require(block.timestamp >= carrot.cliffTime, "Withdrawal not permitted until cliff is reached");
-        require(msg.sender == carrot.recipient);
+    /// @notice Withdraw funds from a VestingMagnet. Called by recipient of the VestingMagnet.
+    function withdraw(uint _vestingMagnetId, uint _amount) public returns(bool) {
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        require(block.timestamp >= magnet.cliffTime, "Withdrawal not permitted until cliff is reached");
+        require(msg.sender == magnet.recipient);
 
-        uint available = getAvailableBalance(_vestingCarrotId);
+        uint available = getAvailableBalance(_vestingMagnetId);
         _amount = min(_amount, available);
 
-        carrot.balance = carrot.balance.sub(_amount);
-        carrot.amountWithdrawn = carrot.amountWithdrawn.add(_amount);
+        magnet.balance = magnet.balance.sub(_amount);
+        magnet.amountWithdrawn = magnet.amountWithdrawn.add(_amount);
 
-        IERC20(carrot.token).safeTransfer(msg.sender, _amount);
-        emit Withdrawn(msg.sender, _vestingCarrotId, carrot.token, _amount);
+        IERC20(magnet.token).safeTransfer(msg.sender, _amount);
+        emit Withdrawn(msg.sender, _vestingMagnetId, magnet.token, _amount);
     }
 
     /// @notice returns the amount available for withdrawal
     /// @dev considers time elapsed since startTime and amount vested per period
     /// @dev if the funder  may return 0 even if recipient is owed money in the event that funder balance is 0
-    function getAvailableBalance(uint _vestingCarrotId) public view returns (uint) {
-        return min(getVestedAmountOwed(_vestingCarrotId), vestingCarrots[_vestingCarrotId].balance);
+    function getAvailableBalance(uint _vestingMagnetId) public view returns (uint) {
+        return min(getVestedAmountOwed(_vestingMagnetId), vestingMagnets[_vestingMagnetId].balance);
     }
 
     /// @notice returns the amount that is fully vested to the user and not yet withdrawn
-    /// @dev if recipient has never withdrawn from the VestingCarrot, this is equivalent to getVestedAmount
-    function getVestedAmountOwed(uint _vestingCarrotId) public view returns (uint) {
-        uint amountWithdrawn = vestingCarrots[_vestingCarrotId].amountWithdrawn;
-        uint vestedAmount = getVestedAmount(_vestingCarrotId);
+    /// @dev if recipient has never withdrawn from the VestingMagnet, this is equivalent to getVestedAmount
+    function getVestedAmountOwed(uint _vestingMagnetId) public view returns (uint) {
+        uint amountWithdrawn = vestingMagnets[_vestingMagnetId].amountWithdrawn;
+        uint vestedAmount = getVestedAmount(_vestingMagnetId);
         return vestedAmount.sub(amountWithdrawn);
     }
 
     /// @notice returns the amount that has vested to the user since startTime
     /// @dev after cliffTime, this is equivalent to getVestedAmountIgnoringCliff
-    function getVestedAmount(uint _vestingCarrotId) public view returns (uint) {
-        if (block.timestamp < vestingCarrots[_vestingCarrotId].cliffTime) {
+    function getVestedAmount(uint _vestingMagnetId) public view returns (uint) {
+        if (block.timestamp < vestingMagnets[_vestingMagnetId].cliffTime) {
             return 0;
         }
-        return getVestedAmountIgnoringCliff(_vestingCarrotId);
+        return getVestedAmountIgnoringCliff(_vestingMagnetId);
     }
 
     /// @notice returns the amount that would be vested to the user since startTime, if cliffTime were ignored
     /// @dev ignores cliffTime, amountWithdrawn, and balance
-    function getVestedAmountIgnoringCliff(uint _vestingCarrotId) public view returns (uint) {
+    function getVestedAmountIgnoringCliff(uint _vestingMagnetId) public view returns (uint) {
         console.log("block.timestamp: ", block.timestamp);
-        VestingCarrot memory carrot = vestingCarrots[_vestingCarrotId];
-        if (block.timestamp <= carrot.startTime) return 0;
-        uint time = min(block.timestamp, carrot.endTime);
-        uint timeElapsed = time.sub(carrot.startTime);
-        uint numPeriodsElapsed = timeElapsed.div(carrot.vestingPeriodLength);
-        return numPeriodsElapsed.mul(carrot.amountPerPeriod);
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        if (block.timestamp <= magnet.startTime) return 0;
+        uint time = min(block.timestamp, magnet.endTime);
+        uint timeElapsed = time.sub(magnet.startTime);
+        uint numPeriodsElapsed = timeElapsed.div(magnet.vestingPeriodLength);
+        return numPeriodsElapsed.mul(magnet.amountPerPeriod);
     }
 
-    /// @notice Withdraw funds from N vesting carrots
-    function withdrawMany(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts) external {
+    /// @notice Withdraw funds from N vesting magnets
+    function withdrawMany(uint[] calldata _vestingMagnetIds, uint[] calldata _amounts) external {
         // TODO
     }
     
-    /// @notice Terminate a carrot
-    function terminateCarrot(uint carrotId) external {
+    /// @notice Terminate a magnet
+    function terminateMagnet(uint _vestingMagnetId) external {
         // TODO: implement terminate
         // consider deletion. Because zeros don’t take up any space, storage can be reclaimed by setting a value to zero. This is incentivized in smart contracts with a gas refund when you change a value to zero.
         // deletion tutorial: https://medium.com/@robhitchens/solidity-crud-part-2-ed8d8b4f74ec
@@ -269,47 +269,47 @@ contract Compeer {
         return fundersList[funders[_funder].id] == _funder;
     }
     
-    function isCarrot(uint _carrotId) public view returns (bool) {
-        return _carrotId < nextVestingCarrotId;
+    function isMagnet(uint _vestingMagnetId) public view returns (bool) {
+        return _vestingMagnetId < nextVestingMagnetId;
     }
 
-    function isFunderOfCarrot(address _funder, uint _carrotId) public view returns (bool) {
-        return vestingCarrots[_carrotId].funder == _funder;
+    function isFunderOfMagnet(address _funder, uint _vestingMagnetId) public view returns (bool) {
+        return vestingMagnets[_vestingMagnetId].funder == _funder;
     }
     
     function getFunderCount() public view returns (uint) {
         return fundersList.length;
     }   
     
-    function getCarrotCount() public view returns (uint) {
-        return nextVestingCarrotId;
+    function getMagnetCount() public view returns (uint) {
+        return nextVestingMagnetId;
     }
 
-    function getFunderOfCarrot(uint _carrotId) public view returns (address) {
-        require(isCarrot(_carrotId), "Carrot does not exist");
-        return vestingCarrots[_carrotId].funder;
+    function getFunderOfMagnet(uint _vestingMagnetId) public view returns (address) {
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+        return vestingMagnets[_vestingMagnetId].funder;
     }
     
-    /// @notice Get the number of carrots created by the funder.    
-    function getCarrotCountByFunder(address _funder) public view returns (uint) {
+    /// @notice Get the number of magnets created by the funder.    
+    function getMagnetCountByFunder(address _funder) public view returns (uint) {
       require(isFunder(_funder), "Not a funder");
-      return funders[_funder].carrotIds.length;
+      return funders[_funder].magnetIds.length;
     }
 
     /// @notice Get the balance of funder ID
-    function getBalance(uint _carrotId) public view returns (uint) {
-        require(isCarrot(_carrotId), "Carrot does not exist");
-        return vestingCarrots[_carrotId].balance;
+    function getBalance(uint _vestingMagnetId) public view returns (uint) {
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+        return vestingMagnets[_vestingMagnetId].balance;
     }
 
-    /// @notice Get all carrots belonging to _recipient
-    function getCarrotsByRecipient(address _recipient) public view returns (uint[] memory) {
-        return recipientToVestingCarrotIds[_recipient];
+    /// @notice Get all magnets belonging to _recipient
+    function getMagnetsByRecipient(address _recipient) public view returns (uint[] memory) {
+        return recipientToVestingMagnetIds[_recipient];
     }
-    /// @notice Get all carrots funded by _funder
-    function getCarrotIdsByFunder(address _funder) public view returns (uint[] memory) {
+    /// @notice Get all magnets funded by _funder
+    function getMagnetIdsByFunder(address _funder) public view returns (uint[] memory) {
       require(isFunder(_funder), "Not a funder");
-      return funders[_funder].carrotIds;
+      return funders[_funder].magnetIds;
     }
 
     /// @notice Get all admins of _funder
@@ -329,13 +329,13 @@ contract Compeer {
 	}
 
     // TODO: add modifiers to functions
-    /// recipientOnly, funderOnly, adminOnly, isCarrot, isFunder
+    /// recipientOnly, funderOnly, adminOnly, isMagnet, isFunder
 
     // TODO: setters to update Funder metadata (name, image, admins, etc).
     // require onlyFunder (or just msg.sender).
     // can Admins perform edits?
     // require name is not empty string
     
-    // TODO: setters to update Carrot metadata
+    // TODO: setters to update Magnet metadata
     // be cautious how does this affect balances and vesting?
 }

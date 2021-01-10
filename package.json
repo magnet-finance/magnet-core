@@ -1,9 +1,9 @@
 {
-  "name": "compeer",
+  "name": "magnet-core",
   "version": "0.0.1",
-  "description": "compeer description",
+  "description": "Core smart contract code for Magnet",
   "main": "index.js",
-  "repository": "https://github.com/compeer/compeer.git",
+  "repository": "https://github.com/magnet-finance/magnet-core.git",
   "license": "GPL-3.0-only",
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.1",

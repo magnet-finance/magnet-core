@@ -1,6 +1,6 @@
-const Compeer = artifacts.require("./Compeer.sol");
+const Magnet = artifacts.require("./Magnet.sol");
 
 module.exports = function(deployer) {
-    console.log("Deploying Compeer...");
-    deployer.deploy(Compeer);
+    console.log("Deploying Magnet...");
+    deployer.deploy(Magnet);
 }

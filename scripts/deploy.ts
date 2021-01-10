@@ -15,11 +15,11 @@ async function main(): Promise<void> {
   // await hre.run('compile');
 
   // We get the contract to deploy
-  const Compeer: ContractFactory = await ethers.getContractFactory("Compeer");
-  const compeer: Contract = await Compeer.deploy(/*constructor args*/);
-  await compeer.deployed();
+  const Magnet: ContractFactory = await ethers.getContractFactory("Magnet");
+  const magnet: Contract = await Magnet.deploy(/*constructor args*/);
+  await magnet.deployed();
 
-  console.log("Compeer deployed to: ", compeer.address);
+  console.log("Magnet deployed to: ", magnet.address);
 }
 
 // We recommend this pattern to be able to use async/await everywhere
