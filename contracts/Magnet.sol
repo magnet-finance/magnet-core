@@ -148,9 +148,10 @@ contract Magnet {
         require(_recipient != address(0), "Recipient cant be the zero address");
         require(_startTime >= block.timestamp, "Start time is in the past");
         require(_cliffTime >= _startTime, "Cliff time must be >= start time");
-        require(_endTime > _startTime && _endTime > _cliffTime, "End time must be > start time and cliff time");
-        require(_vestingPeriodLength <= (_endTime.sub(_startTime)), "Period must be < duration");
-        require(_vestingPeriodLength > 0, "Vesting Period must be >0");
+        require(_endTime > _startTime && _endTime >= _cliffTime, "End time must be > start time and cliff time");
+        uint duration = _endTime.sub(_startTime);
+        require(_vestingPeriodLength <= duration, "Period must be < duration");
+        require(duration.mod(_vestingPeriodLength, "Vesting period length cannot be zero") == 0, "Duration must be a multiple of period length");
         require(_amountPerPeriod > 0, "Amount must be >0");
         
         vestingMagnets[nextVestingMagnetId] = VestingMagnet({
