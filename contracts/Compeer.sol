@@ -61,7 +61,7 @@ contract Compeer {
         uint cliffTime;
         uint endTime;  // TODO:  can be infinite - how? 0? less than startTime? max uint?  do i even need this? maybe # of periods instead? - count how many passed already
         uint amountWithdrawn;
-        uint balance; // TODO: can balance can be negative? (arrears) If Funder deposits while in this state, then contract should payout immediately.
+        uint balance;
         string message;
     }
 
@@ -81,16 +81,17 @@ contract Compeer {
 
 
     /// @notice An event thats emitted when a new Funder is registered
-    event FunderRegistered(address indexed funder, uint indexed id);
+    event FunderRegistered(address indexed funder, uint indexed vestingCarrotId);
     
     /// @notice An event thats emitted when a new VestingCarrot is minted
     event VestingCarrotMinted(address indexed recipient, address indexed funder, uint indexed vestingCarrotId);
 
     /// @notice An event thats emitted when funds are deposited into the contract
     event Deposited(address indexed from, uint indexed vestingCarrotId, uint amount);
+    // TODO: emit token address too, not indexed. update unit test.
 
     /// @notice An event thats emitted when funds are withdrawn from the contract
-    event Withdrawn(address indexed to, uint indexed vestingCarrotId, uint amount);
+    event Withdrawn(address indexed to, uint indexed vestingCarrotId, address token, uint amount);
 
     // TODO: event FunderDeleted  (remember to only allow if zero carrots)
     // TODO: event VestingCarrotTerminated
@@ -185,8 +186,6 @@ contract Compeer {
         carrot.balance = carrot.balance.add(_amount);
 
         IERC20(_tokenId).safeTransferFrom(msg.sender, address(this), _amount);
-
-        // TODO: if balance was negative, pay out immediately?
         emit Deposited(msg.sender, _vestingCarrotId, _amount);
         return true;
     }
@@ -198,18 +197,62 @@ contract Compeer {
         // for each entry...
     }
 
+    /// @notice Withdraw funds from a vesting carrot. Called by recipient of the VestingCarrot.
+    function withdraw(uint _vestingCarrotId, uint _amount) public returns(bool) {
+        require(isCarrot(_vestingCarrotId), "Carrot does not exist");
+        VestingCarrot memory carrot = vestingCarrots[_vestingCarrotId];
+        require(block.timestamp >= carrot.cliffTime, "Withdrawal not permitted until cliff is reached");
+        require(msg.sender == carrot.recipient);
+
+        uint available = getAvailableBalance(_vestingCarrotId);
+        _amount = min(_amount, available);
+
+        carrot.balance = carrot.balance.sub(_amount);
+        carrot.amountWithdrawn = carrot.amountWithdrawn.add(_amount);
+
+        IERC20(carrot.token).safeTransfer(msg.sender, _amount);
+        emit Withdrawn(msg.sender, _vestingCarrotId, carrot.token, _amount);
+    }
+
+    /// @notice returns the amount available for withdrawal
+    /// @dev considers time elapsed since startTime and amount vested per period
+    /// @dev if the funder  may return 0 even if recipient is owed money in the event that funder balance is 0
+    function getAvailableBalance(uint _vestingCarrotId) public view returns (uint) {
+        return min(getVestedAmountOwed(_vestingCarrotId), vestingCarrots[_vestingCarrotId].balance);
+    }
+
+    /// @notice returns the amount that is fully vested to the user and not yet withdrawn
+    /// @dev if recipient has never withdrawn from the VestingCarrot, this is equivalent to getVestedAmount
+    function getVestedAmountOwed(uint _vestingCarrotId) public view returns (uint) {
+        uint amountWithdrawn = vestingCarrots[_vestingCarrotId].amountWithdrawn;
+        uint vestedAmount = getVestedAmount(_vestingCarrotId);
+        return vestedAmount.sub(amountWithdrawn);
+    }
+
+    /// @notice returns the amount that has vested to the user since startTime
+    /// @dev after cliffTime, this is equivalent to getVestedAmountIgnoringCliff
+    function getVestedAmount(uint _vestingCarrotId) public view returns (uint) {
+        if (block.timestamp < vestingCarrots[_vestingCarrotId].cliffTime) {
+            return 0;
+        }
+        return getVestedAmountIgnoringCliff(_vestingCarrotId);
+    }
+
+    /// @notice returns the amount that would be vested to the user since startTime, if cliffTime were ignored
+    /// @dev ignores cliffTime, amountWithdrawn, and balance
+    function getVestedAmountIgnoringCliff(uint _vestingCarrotId) public view returns (uint) {
+        console.log("block.timestamp: ", block.timestamp);
+        VestingCarrot memory carrot = vestingCarrots[_vestingCarrotId];
+        if (block.timestamp <= carrot.startTime) return 0;
+        uint time = min(block.timestamp, carrot.endTime);
+        uint timeElapsed = time.sub(carrot.startTime);
+        uint numPeriodsElapsed = timeElapsed.div(carrot.vestingPeriodLength);
+        return numPeriodsElapsed.mul(carrot.amountPerPeriod);
+    }
+
     /// @notice Withdraw funds from N vesting carrots
-    function withdraw(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts) external {
-        // TODO: modifier only owner/recipient == msg.sender
-        // require amount is <= balance (even if user is owed more)
-        // helper function to calculate the latest vesting
-        // update the vesting variables to latest
-        // require amount is <= vested amount, less previous withdrawals
-        // execute the eth/ERC20 transfer
-        // update balance
-        // update amountWithdrawn
-        // todo: what happens if an ERC20 changes its decimal from 18 to some other number? do i need to update my balances?
-        // emit Withdawn event
+    function withdrawMany(uint[] calldata _vestingCarrotIds, uint[] calldata _amounts) external {
+        // TODO
     }
     
     /// @notice Terminate a carrot
@@ -279,6 +322,14 @@ contract Compeer {
     function getFundersByAdmin(address _admin) public view returns (address[] memory) {
         return adminFunders[_admin];
     }
+
+    /// @notice returns the minimum of a or b
+    function min(uint a, uint b) internal pure returns (uint) {
+		return a < b ? a : b;
+	}
+
+    // TODO: add modifiers to functions
+    /// recipientOnly, funderOnly, adminOnly, isCarrot, isFunder
 
     // TODO: setters to update Funder metadata (name, image, admins, etc).
     // require onlyFunder (or just msg.sender).
