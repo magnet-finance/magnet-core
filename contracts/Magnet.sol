@@ -202,13 +202,12 @@ contract Magnet {
     function withdraw(uint _vestingMagnetId, uint _amount) public returns(bool) {
         require(isMagnet(_vestingMagnetId), "Magnet does not exist");
         require(isFunderOrRecipientOfMagnet(_vestingMagnetId, msg.sender), "Only the funder or recipient may withdraw");
-        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
-        require(block.timestamp >= magnet.cliffTime, "Withdrawal not permitted until cliff is reached");
-
+        
         uint available = getAvailableBalance(_vestingMagnetId, msg.sender);
         _amount = min(_amount, available);
         require(_amount > 0, "Available balance is zero");
 
+        VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
         magnet.balance = magnet.balance.sub(_amount);
         if (msg.sender == magnet.recipient) {
             magnet.amountWithdrawn = magnet.amountWithdrawn.add(_amount);

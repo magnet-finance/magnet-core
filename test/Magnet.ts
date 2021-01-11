@@ -1,6 +1,6 @@
 import {ethers, waffle} from 'hardhat';
 import {assert, expect, use} from 'chai';
-import {BigNumber, utils} from 'ethers';
+import {utils} from 'ethers';
 
 const IERC20 = require('../build/@openzeppelin/contracts/token/ERC20/IERC20.sol/IERC20.json');
 const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
@@ -69,8 +69,39 @@ describe('Magnet', function() {
     return {magnet, mockERC20, owner, addr1};
   }
 
-  // Positive tests: given valid input, performs as expected
-  // Negative tests: given invalid input, captures errors
+  /*
+  // TODO: fix timing issues. Fails with 'start time is in the past'
+  async function fixtureFundedMagnet() {
+    const [owner, addr1] = await ethers.getSigners();
+    const Magnet = await ethers.getContractFactory("Magnet");
+    const magnet = await Magnet.deploy();
+    await magnet.deployed();
+    const mockERC20 = await deployMockContract(owner, IERC20.abi);
+    
+    let admins = [addr1.address];
+    let name = "Funder 1";
+    let description = "Description 1";
+    let imageUrl = "imageUrl 1";
+    await magnet.registerFunder(admins, name, description, imageUrl);
+
+    let recipient = addr1.address;
+    let token = mockERC20.address;
+    let now = getTimeInSeconds();
+    let startTime = now + 20;
+    let vestingPeriodLength = 1;
+    let amountPerPeriod = 1;
+    let cliffTime = now + 40;
+    let endTime = now + 60;
+    let message = "Message 1";
+    await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+
+    let magnetId = 0;
+    let amount = 1000;
+    await magnet.deposit(magnetId, amount, mockERC20.address);
+
+    return {magnet, mockERC20, owner, addr1};
+  }
+  */
 
   describe('Deploy', function() {
     it('Contracts should be defined', async function() {
@@ -351,7 +382,7 @@ describe('Magnet', function() {
     });
   });
 
-  describe('Deposit - Vesting Magnet', function() {
+  describe('Deposit', function() {
     it('Deposit to a VestingMagnet with valid data', async function() {
       this.timeout(4000);
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
@@ -587,8 +618,87 @@ describe('Magnet', function() {
     //       Withdrawal and updating amountWithdrawn variable.
   });
 
+  describe('Withdraw', function() {
+    it('Withdraw as funder from a VestingMagnet before start time', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + 20;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+  
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = 1000;
+      await mockERC20.mock.transferFrom.returns(true);
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+  
+      let amountToWithdraw = 800;
+      await mockERC20.mock.transfer.returns(true);
+      await expect(magnet.withdraw(magnetId, amountToWithdraw))
+        .to.emit(magnet, 'Withdrawn')
+        .withArgs(owner.address, magnetId, mockERC20.address, amountToWithdraw);
+      
+      expect(await magnet.getBalance(magnetId)).to.equal(amount - amountToWithdraw);
+      // TODO: check amountwithdrawn
+      // TODO: withdraw before cliff, before end, after end
+    });
+
+    it('Withdraw as recipient from a VestingMagnet before cliff time', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + 20;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+  
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = 40;
+      await mockERC20.mock.transferFrom.returns(true);
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+  
+      let amountToWithdraw = 10;
+      await mockERC20.mock.transfer.returns(true);
+
+      // attempt withdraw before startTime
+      await expect(magnet.connect(addr1).withdraw(magnetId, amountToWithdraw))
+        .to.be.revertedWith('Available balance is zero');
+
+      fastForwardEvmBy(25);
+
+      // attempt withdraw before cliffTime
+      await expect(magnet.connect(addr1).withdraw(magnetId, amountToWithdraw))
+        .to.be.revertedWith('Available balance is zero');
+
+      fastForwardEvmBy(25);
+      // attempt withdraw after cliffTime, before endTime
+      await expect(magnet.connect(addr1).withdraw(magnetId, amountToWithdraw))
+        .to.emit(magnet, 'Withdrawn');
+      expect(await magnet.getBalance(magnetId))
+        .to.be.at.least(amount - amountToWithdraw)
+        .and.to.be.below(amount);
+      // TODO: check amountwithdrawn
+      // TODO: for recipient, also test before start, before cliff, before end, after end
+    });
+
+    // TODO: more withdraw tests
+    // - withdraw as neither funder not recipient
+
+    // TODO: if VestingMagnet is finite, prevent funder from depositing more than cumulative amount.
+
   // describe('Admin', function() {
   //   // TODO: test isAdmins mapping, adminFunder array, helper function
   // });
-
+  });
 });
