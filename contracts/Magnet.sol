@@ -180,7 +180,7 @@ contract Magnet {
     function deposit(uint _vestingMagnetId, uint _amount, address _tokenId) public returns(bool) {
         require(isMagnet(_vestingMagnetId), "Magnet does not exist");
         require(isFunderOfMagnet(_vestingMagnetId, msg.sender), "Only the funder can deposit to a magnet");
-        require(_amount > 0, "amount is zero");
+        require(_amount > 0, "Deposit must be greater than zero");
 
         VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
         require(magnet.token == _tokenId, "Deposit token address does not match magnet token");

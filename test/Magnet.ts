@@ -1,6 +1,6 @@
 import {ethers, waffle} from 'hardhat';
 import {assert, expect, use} from 'chai';
-import {utils} from 'ethers';
+import {BigNumber, utils} from 'ethers';
 
 const IERC20 = require('../build/@openzeppelin/contracts/token/ERC20/IERC20.sol/IERC20.json');
 const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
@@ -374,11 +374,50 @@ describe('Magnet', function() {
       expect(await magnet.getBalance(magnetId)).to.equal(expectedBalance);
     });
 
-    // TODO: add more tests for deposit()
-    // try to deposit 0
-    // deposit to make balance wrap - exceed int limit
-    // try to deposit wrong token
-    // reject a non-funder attempt to deposit
+    it('Should revert if depositing 0', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = 0;
+
+      await mockERC20.mock.transferFrom.returns(true);
+      await expect(magnet.deposit(magnetId, amount, mockERC20.address))
+        .to.be.revertedWith('Deposit must be greater than zero');
+    });
+
+    it('Should revert if balance exceeds max uint', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = ethers.constants.MaxUint256;
+
+      await mockERC20.mock.transferFrom.returns(true);
+      await expect(magnet.deposit(magnetId, amount, mockERC20.address))
+        .to.emit(magnet, 'Deposited')
+        .withArgs(owner.address, magnetId, amount);
+      expect(await magnet.getBalance(magnetId)).to.equal(amount);
+      await expect(magnet.deposit(magnetId, 1, mockERC20.address))
+        .to.be.revertedWith('revert SafeMath: addition overflow');
+    });
+
+    it('Should revert if depositing a different token', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = 1000;
+      let wrongToken = await deployMockContract(owner, IERC20.abi);
+
+      await mockERC20.mock.transferFrom.returns(true);
+      await expect(magnet.deposit(magnetId, amount, wrongToken.address))
+        .to.be.revertedWith('Deposit token address does not match magnet token');
+    });
+
+    it('Should revert if non-funder tries to deposit', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = 1000;
+
+      await mockERC20.mock.transferFrom.returns(true);
+      await expect(magnet.connect(addr1).deposit(magnetId, amount, mockERC20.address))
+        .to.be.revertedWith('Only the funder can deposit to a magnet');
+    });
   });
 
   describe('Get Balances', function() {
@@ -536,7 +575,7 @@ describe('Magnet', function() {
       let amountAfterEnd = await magnet.getVestedAmount(magnetId);
       // console.log("amountAfterEnd:", amountAfterEnd.toString());
       // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
-      expect(amountAfterEnd). to.equal(expectedAmountAtEnd);
+      expect(amountAfterEnd).to.equal(expectedAmountAtEnd);
     });
 
     // TODO: add more tests for withdrawal
