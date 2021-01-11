@@ -179,7 +179,7 @@ contract Magnet {
     /// @notice Deposit to a VestingMagnet
     function deposit(uint _vestingMagnetId, uint _amount, address _tokenId) public returns(bool) {
         require(isMagnet(_vestingMagnetId), "Magnet does not exist");
-        require(isFunderOfMagnet(msg.sender, _vestingMagnetId), "Only the funder can deposit to a magnet");
+        require(isFunderOfMagnet(_vestingMagnetId, msg.sender), "Only the funder can deposit to a magnet");
         require(_amount > 0, "amount is zero");
 
         VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
@@ -201,48 +201,57 @@ contract Magnet {
     /// @notice Withdraw funds from a VestingMagnet. Called by recipient of the VestingMagnet.
     function withdraw(uint _vestingMagnetId, uint _amount) public returns(bool) {
         require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+        require(isFunderOrRecipientOfMagnet(_vestingMagnetId, msg.sender), "Only the funder or recipient may withdraw");
         VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
         require(block.timestamp >= magnet.cliffTime, "Withdrawal not permitted until cliff is reached");
-        require(msg.sender == magnet.recipient);
 
-        uint available = getAvailableBalance(_vestingMagnetId);
+        uint available = getAvailableBalance(_vestingMagnetId, msg.sender);
         _amount = min(_amount, available);
+        require(_amount > 0, "Available balance is zero");
 
         magnet.balance = magnet.balance.sub(_amount);
-        magnet.amountWithdrawn = magnet.amountWithdrawn.add(_amount);
+        if (msg.sender == magnet.recipient) {
+            magnet.amountWithdrawn = magnet.amountWithdrawn.add(_amount);
+        }
 
         IERC20(magnet.token).safeTransfer(msg.sender, _amount);
         emit Withdrawn(msg.sender, _vestingMagnetId, magnet.token, _amount);
     }
 
-    /// @notice returns the amount available for withdrawal
-    /// @dev considers time elapsed since startTime and amount vested per period
-    /// @dev if the funder  may return 0 even if recipient is owed money in the event that funder balance is 0
-    function getAvailableBalance(uint _vestingMagnetId) public view returns (uint) {
-        return min(getVestedAmountOwed(_vestingMagnetId), vestingMagnets[_vestingMagnetId].balance);
+    /// @notice returns the amount available for withdrawal by who
+    /// @param _vestingMagnetId The ID of the VestingMagnet to withdraw from
+    /// @param _who The address for which to query the balance
+    function getAvailableBalance(uint _vestingMagnetId, address _who) public view returns (uint) {
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        uint amountVestedToRecipient = min(getVestedAmountOwed(_vestingMagnetId), magnet.balance);
+        if (_who == magnet.recipient) return amountVestedToRecipient;
+        if (_who == magnet.funder) return magnet.balance.sub(amountVestedToRecipient);
+        return 0;
     }
 
     /// @notice returns the amount that is fully vested to the user and not yet withdrawn
     /// @dev if recipient has never withdrawn from the VestingMagnet, this is equivalent to getVestedAmount
     function getVestedAmountOwed(uint _vestingMagnetId) public view returns (uint) {
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
         uint amountWithdrawn = vestingMagnets[_vestingMagnetId].amountWithdrawn;
         uint vestedAmount = getVestedAmount(_vestingMagnetId);
         return vestedAmount.sub(amountWithdrawn);
     }
 
-    /// @notice returns the amount that has vested to the user since startTime
+    /// @notice returns the amount that has vested to recipient since startTime
     /// @dev after cliffTime, this is equivalent to getVestedAmountIgnoringCliff
     function getVestedAmount(uint _vestingMagnetId) public view returns (uint) {
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
         if (block.timestamp < vestingMagnets[_vestingMagnetId].cliffTime) {
             return 0;
         }
         return getVestedAmountIgnoringCliff(_vestingMagnetId);
     }
 
-    /// @notice returns the amount that would be vested to the user since startTime, if cliffTime were ignored
-    /// @dev ignores cliffTime, amountWithdrawn, and balance
+    /// @notice returns the progress made toward vesting since startTime, if the cliff is ignored
     function getVestedAmountIgnoringCliff(uint _vestingMagnetId) public view returns (uint) {
-        console.log("block.timestamp: ", block.timestamp);
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
         VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
         if (block.timestamp <= magnet.startTime) return 0;
         uint time = min(block.timestamp, magnet.endTime);
@@ -274,8 +283,13 @@ contract Magnet {
         return _vestingMagnetId < nextVestingMagnetId;
     }
 
-    function isFunderOfMagnet(address _funder, uint _vestingMagnetId) public view returns (bool) {
+    function isFunderOfMagnet(uint _vestingMagnetId, address _funder) public view returns (bool) {
         return vestingMagnets[_vestingMagnetId].funder == _funder;
+    }
+
+    function isFunderOrRecipientOfMagnet(uint _vestingMagnetId, address _who) public view returns (bool) {
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        return (_who == magnet.funder || _who == magnet.recipient);
     }
     
     function getFunderCount() public view returns (uint) {

@@ -349,8 +349,6 @@ describe('Magnet', function() {
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
         .to.be.revertedWith('Amount must be >0');
     });
-
-    // TODO: prevent recipient being zero address?
   });
 
   describe('Deposit - Vesting Magnet', function() {
@@ -391,7 +389,7 @@ describe('Magnet', function() {
       return (testTime - startTime) / vestingPeriodLength * amountPerPeriod;
     }
 
-    it('Should get amount ignoring cliff with valid input', async function() {
+    it('Should get correct amount ignoring cliff with valid input', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       let recipient = addr1.address;
       let token = mockERC20.address;
@@ -413,44 +411,141 @@ describe('Magnet', function() {
       fastForwardEvmBy(25);
 
       let amountBeforeCliff = await magnet.getVestedAmountIgnoringCliff(magnetId);
-      //console.log("amountBeforeCliff:", amountBeforeCliff.toString());
-      //console.log("expectedAmountAtCliff", expectedAmountAtCliff);
+      // console.log("amountBeforeCliff:", amountBeforeCliff.toString());
+      // console.log("expectedAmountAtCliff", expectedAmountAtCliff);
       expect(amountBeforeCliff).to.be.above(0)
         .and.to.be.below(expectedAmountAtCliff);
       fastForwardEvmBy(25);
 
       let amountBeforeEnd = await magnet.getVestedAmountIgnoringCliff(magnetId);
-      //console.log("amountBeforeEnd:", amountBeforeEnd.toString());
-      //console.log("expectedAmountAtEnd", expectedAmountAtEnd);
+      // console.log("amountBeforeEnd:", amountBeforeEnd.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
       expect(amountBeforeEnd).to.be.above(0)
         .and.to.be.above(expectedAmountAtCliff)
         .and.to.be.below(expectedAmountAtEnd);
       fastForwardEvmBy(15);
 
       let amountAfterEnd = await magnet.getVestedAmountIgnoringCliff(magnetId);
-      //console.log("amountAfterEnd:", amountAfterEnd.toString());
-      //console.log("expectedAmountAtEnd", expectedAmountAtEnd);
+      // console.log("amountAfterEnd:", amountAfterEnd.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
+      expect(amountAfterEnd). to.equal(expectedAmountAtEnd);
+    });
+
+    it('Should get correct vested amount with valid input', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + 20;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + 40;
+      let endTime = now + 60;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      let expectedAmountAtCliff = estimateVestedAmountIgnoringCliff(cliffTime, startTime, vestingPeriodLength, amountPerPeriod);
+      let expectedAmountAtEnd = estimateVestedAmountIgnoringCliff(endTime, startTime, vestingPeriodLength, amountPerPeriod);
+
+      let amountBeforeStart = await magnet.getVestedAmount(magnetId);
+      expect(amountBeforeStart).to.equal(0);
+      fastForwardEvmBy(25);
+
+      let amountBeforeCliff = await magnet.getVestedAmount(magnetId);
+      expect(amountBeforeCliff).to.equal(0);
+      fastForwardEvmBy(25);
+
+      let amountBeforeEnd = await magnet.getVestedAmount(magnetId);
+      // console.log("amountBeforeEnd:", amountBeforeEnd.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
+      expect(amountBeforeEnd).to.be.above(0)
+        .and.to.be.above(expectedAmountAtCliff)
+        .and.to.be.below(expectedAmountAtEnd);
+      fastForwardEvmBy(15);
+
+      let amountAfterEnd = await magnet.getVestedAmount(magnetId);
+      // console.log("amountAfterEnd:", amountAfterEnd.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
+      expect(amountAfterEnd). to.equal(expectedAmountAtEnd);
+    });
+
+    it('Should get correct vested amount with cliff time equal to start time', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + 20;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = startTime;
+      let endTime = now + 60;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      let expectedAmountAtCliff = estimateVestedAmountIgnoringCliff(cliffTime, startTime, vestingPeriodLength, amountPerPeriod);
+      let expectedAmountAtEnd = estimateVestedAmountIgnoringCliff(endTime, startTime, vestingPeriodLength, amountPerPeriod);
+
+      let amountBeforeStart = await magnet.getVestedAmount(magnetId);
+      expect(amountBeforeStart).to.equal(0);
+      fastForwardEvmBy(25);
+
+      let amountBeforeEnd = await magnet.getVestedAmount(magnetId);
+      // console.log("amountBeforeEnd:", amountBeforeEnd.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
+      expect(amountBeforeEnd).to.be.above(0)
+        .and.to.be.above(expectedAmountAtCliff)
+        .and.to.be.below(expectedAmountAtEnd);
+      fastForwardEvmBy(50);
+
+      let amountAfterEnd = await magnet.getVestedAmount(magnetId);
+      // console.log("amountAfterEnd:", amountAfterEnd.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
+      expect(amountAfterEnd). to.equal(expectedAmountAtEnd);
+    });
+
+    it('Should get correct vested amount with cliff time equal to end time', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + 20;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let endTime = now + 60;
+      let cliffTime = endTime;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      let expectedAmountAtCliff = estimateVestedAmountIgnoringCliff(cliffTime, startTime, vestingPeriodLength, amountPerPeriod);
+      let expectedAmountAtEnd = estimateVestedAmountIgnoringCliff(endTime, startTime, vestingPeriodLength, amountPerPeriod);
+      expect(expectedAmountAtCliff).to.equal(expectedAmountAtEnd);
+
+      let amountBeforeStart = await magnet.getVestedAmount(magnetId);
+      expect(amountBeforeStart).to.equal(0);
+      fastForwardEvmBy(50);
+
+      let amountBeforeEnd = await magnet.getVestedAmount(magnetId);
+      // console.log("amountBeforeEnd:", amountBeforeEnd.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
+      expect(amountBeforeEnd).to.equal(0);
+      fastForwardEvmBy(15);
+
+      let amountAfterEnd = await magnet.getVestedAmount(magnetId);
+      // console.log("amountAfterEnd:", amountAfterEnd.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
       expect(amountAfterEnd). to.equal(expectedAmountAtEnd);
     });
 
     // TODO: add more tests for withdrawal
-
-    // 0 cliff time
-    // start time == end time
-    // cliff time == start time
-    // cliff time == end time
-
     // amountOwed > balance
     // amountOwed == balance
     // amountOwed < balance
-    
-    // vestingPeriod Length
-      // = 0
-      // odd modulo of duration
-      // equal to duartion
-      // greater than duration
 
-    // invalid magnet id
+    // TODO: add tests for getVestedAmountOwed after implementing
+    //       Withdrawal and updating amountWithdrawn variable.
   });
 
   // describe('Admin', function() {
