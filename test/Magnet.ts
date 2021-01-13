@@ -7,6 +7,10 @@ const zero_address = utils.getAddress('0x000000000000000000000000000000000000000
 const {loadFixture, deployMockContract, solidity } = waffle;
 use(solidity);
 
+const START_TIME_DELTA = 20;
+const CLIFF_TIME_DELTA = 864020; // 10 days after start time
+const END_TIME_DELTA = 3456020; // 40 days after start time
+
 function getTimeInSeconds() {
   return Math.floor(new Date().getTime() / 1000)
 }
@@ -15,6 +19,20 @@ function getTimeInSeconds() {
 function fastForwardEvmBy(seconds) {
   ethers.provider.send("evm_increaseTime", [seconds]);
   ethers.provider.send("evm_mine", []);
+}
+
+function duration(startTime, endTime) {
+  return endTime - startTime;
+}
+
+function percentVested(startTime, atTime, endTime) {
+  return ((atTime - startTime) / duration(startTime, endTime));
+}
+
+/// @notice helper function to calculate the vested amount, ignoring cliff
+function estimateVestedAmountIgnoringCliff(atTime, startTime, vestingPeriodLength, amountPerPeriod) {
+  if (atTime < startTime) return 0;
+  return (atTime - startTime) / vestingPeriodLength * amountPerPeriod;
 }
 
 describe('Magnet', function() {
@@ -58,50 +76,16 @@ describe('Magnet', function() {
     let recipient = addr1.address;
     let token = mockERC20.address;
     let now = getTimeInSeconds();
-    let startTime = now + 20;
+    let startTime = now + START_TIME_DELTA;
     let vestingPeriodLength = 1;
     let amountPerPeriod = 1;
-    let cliffTime = now + 40;
-    let endTime = now + 60;
+    let cliffTime = now + CLIFF_TIME_DELTA;
+    let endTime = now + END_TIME_DELTA;
     let message = "Message 1";
     await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
 
     return {magnet, mockERC20, owner, addr1};
   }
-
-  /*
-  // TODO: fix timing issues. Fails with 'start time is in the past'
-  async function fixtureFundedMagnet() {
-    const [owner, addr1] = await ethers.getSigners();
-    const Magnet = await ethers.getContractFactory("Magnet");
-    const magnet = await Magnet.deploy();
-    await magnet.deployed();
-    const mockERC20 = await deployMockContract(owner, IERC20.abi);
-    
-    let admins = [addr1.address];
-    let name = "Funder 1";
-    let description = "Description 1";
-    let imageUrl = "imageUrl 1";
-    await magnet.registerFunder(admins, name, description, imageUrl);
-
-    let recipient = addr1.address;
-    let token = mockERC20.address;
-    let now = getTimeInSeconds();
-    let startTime = now + 20;
-    let vestingPeriodLength = 1;
-    let amountPerPeriod = 1;
-    let cliffTime = now + 40;
-    let endTime = now + 60;
-    let message = "Message 1";
-    await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
-
-    let magnetId = 0;
-    let amount = 1000;
-    await magnet.deposit(magnetId, amount, mockERC20.address);
-
-    return {magnet, mockERC20, owner, addr1};
-  }
-  */
 
   describe('Deploy', function() {
     it('Contracts should be defined', async function() {
@@ -181,11 +165,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -197,11 +181,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       let expectedId = await magnet.getMagnetCount();
@@ -246,11 +230,11 @@ describe('Magnet', function() {
       let recipient = zero_address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -265,8 +249,8 @@ describe('Magnet', function() {
       let startTime = now - 10;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -282,11 +266,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
       let cliffTime = now - 10;
-      let endTime = now + 60;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -302,10 +286,10 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
+      let cliffTime = now + CLIFF_TIME_DELTA;
       let endTime = now - 10;
       let message = "Message 1";
 
@@ -322,11 +306,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
-      let vestingPeriodLength = 50;
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = (END_TIME_DELTA - START_TIME_DELTA) + 10;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -338,11 +322,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 0;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -354,11 +338,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
-      let vestingPeriodLength = 7;
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = (END_TIME_DELTA - START_TIME_DELTA) / 2 + 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -370,11 +354,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 0;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
@@ -415,20 +399,6 @@ describe('Magnet', function() {
         .to.be.revertedWith('Deposit must be greater than zero');
     });
 
-    it('Should revert if balance exceeds max uint', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
-      let amount = ethers.constants.MaxUint256;
-
-      await mockERC20.mock.transferFrom.returns(true);
-      await expect(magnet.deposit(magnetId, amount, mockERC20.address))
-        .to.emit(magnet, 'Deposited')
-        .withArgs(owner.address, magnetId, amount);
-      expect(await magnet.getBalance(magnetId)).to.equal(amount);
-      await expect(magnet.deposit(magnetId, 1, mockERC20.address))
-        .to.be.revertedWith('revert SafeMath: addition overflow');
-    });
-
     it('Should revert if depositing a different token', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
       let magnetId = await magnet.nextVestingMagnetId() - 1;
@@ -449,26 +419,51 @@ describe('Magnet', function() {
       await expect(magnet.connect(addr1).deposit(magnetId, amount, mockERC20.address))
         .to.be.revertedWith('Only the funder can deposit to a magnet');
     });
+
+    it('Should only allow deposits up to total lifetime value of a finite VestingMagnet', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = ethers.constants.MaxUint256;
+      let totalLifetimeValue = END_TIME_DELTA - START_TIME_DELTA;
+
+      await mockERC20.mock.transferFrom.returns(true);
+      await expect(magnet.deposit(magnetId, amount, mockERC20.address))
+        .to.emit(magnet, 'Deposited')
+        .withArgs(owner.address, magnetId, totalLifetimeValue);
+      expect(await magnet.getBalance(magnetId)).to.equal(totalLifetimeValue);
+    });
+
+    it('Should only top up to the total lifetime value of a finite VestingMagnet', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let totalLifetimeValue = END_TIME_DELTA - START_TIME_DELTA;
+      await mockERC20.mock.transferFrom.returns(true);
+
+      let amount1 = totalLifetimeValue / 2;
+      await expect(magnet.deposit(magnetId, amount1, mockERC20.address))
+        .to.emit(magnet, 'Deposited')
+        .withArgs(owner.address, magnetId, amount1);
+      expect(await magnet.getBalance(magnetId)).to.equal(amount1);
+
+      let amount2 = totalLifetimeValue;
+      await expect(magnet.deposit(magnetId, amount2, mockERC20.address))
+        .to.emit(magnet, 'Deposited')
+        .withArgs(owner.address, magnetId, totalLifetimeValue - amount1);
+      expect(await magnet.getBalance(magnetId)).to.equal(totalLifetimeValue);
+    });
   });
 
   describe('Get Balances', function() {
-
-    /// @notice helper function to calculate the vested amount, ignoring cliff
-    function estimateVestedAmountIgnoringCliff(testTime, startTime, vestingPeriodLength, amountPerPeriod) {
-      if (testTime < startTime) return 0;
-      return (testTime - startTime) / vestingPeriodLength * amountPerPeriod;
-    }
-
     it('Should get correct amount ignoring cliff with valid input', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
@@ -478,14 +473,14 @@ describe('Magnet', function() {
 
       let amountBeforeStart = await magnet.getVestedAmountIgnoringCliff(magnetId);
       expect(amountBeforeStart).to.equal(0);
-      fastForwardEvmBy(25);
+      fastForwardEvmBy(CLIFF_TIME_DELTA - START_TIME_DELTA);
 
       let amountBeforeCliff = await magnet.getVestedAmountIgnoringCliff(magnetId);
       // console.log("amountBeforeCliff:", amountBeforeCliff.toString());
       // console.log("expectedAmountAtCliff", expectedAmountAtCliff);
       expect(amountBeforeCliff).to.be.above(0)
         .and.to.be.below(expectedAmountAtCliff);
-      fastForwardEvmBy(25);
+      fastForwardEvmBy(END_TIME_DELTA - CLIFF_TIME_DELTA);
 
       let amountBeforeEnd = await magnet.getVestedAmountIgnoringCliff(magnetId);
       // console.log("amountBeforeEnd:", amountBeforeEnd.toString());
@@ -493,7 +488,7 @@ describe('Magnet', function() {
       expect(amountBeforeEnd).to.be.above(0)
         .and.to.be.above(expectedAmountAtCliff)
         .and.to.be.below(expectedAmountAtEnd);
-      fastForwardEvmBy(15);
+      fastForwardEvmBy(START_TIME_DELTA);
 
       let amountAfterEnd = await magnet.getVestedAmountIgnoringCliff(magnetId);
       // console.log("amountAfterEnd:", amountAfterEnd.toString());
@@ -506,11 +501,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
@@ -520,11 +515,11 @@ describe('Magnet', function() {
 
       let amountBeforeStart = await magnet.getVestedAmount(magnetId);
       expect(amountBeforeStart).to.equal(0);
-      fastForwardEvmBy(25);
+      fastForwardEvmBy(CLIFF_TIME_DELTA - START_TIME_DELTA);
 
       let amountBeforeCliff = await magnet.getVestedAmount(magnetId);
       expect(amountBeforeCliff).to.equal(0);
-      fastForwardEvmBy(25);
+      fastForwardEvmBy(END_TIME_DELTA - CLIFF_TIME_DELTA);
 
       let amountBeforeEnd = await magnet.getVestedAmount(magnetId);
       // console.log("amountBeforeEnd:", amountBeforeEnd.toString());
@@ -532,7 +527,7 @@ describe('Magnet', function() {
       expect(amountBeforeEnd).to.be.above(0)
         .and.to.be.above(expectedAmountAtCliff)
         .and.to.be.below(expectedAmountAtEnd);
-      fastForwardEvmBy(15);
+        fastForwardEvmBy(START_TIME_DELTA);
 
       let amountAfterEnd = await magnet.getVestedAmount(magnetId);
       // console.log("amountAfterEnd:", amountAfterEnd.toString());
@@ -545,11 +540,11 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
       let cliffTime = startTime;
-      let endTime = now + 60;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
@@ -559,7 +554,7 @@ describe('Magnet', function() {
 
       let amountBeforeStart = await magnet.getVestedAmount(magnetId);
       expect(amountBeforeStart).to.equal(0);
-      fastForwardEvmBy(25);
+      fastForwardEvmBy(CLIFF_TIME_DELTA - START_TIME_DELTA);
 
       let amountBeforeEnd = await magnet.getVestedAmount(magnetId);
       // console.log("amountBeforeEnd:", amountBeforeEnd.toString());
@@ -567,7 +562,7 @@ describe('Magnet', function() {
       expect(amountBeforeEnd).to.be.above(0)
         .and.to.be.above(expectedAmountAtCliff)
         .and.to.be.below(expectedAmountAtEnd);
-      fastForwardEvmBy(50);
+      fastForwardEvmBy(END_TIME_DELTA - CLIFF_TIME_DELTA + START_TIME_DELTA);
 
       let amountAfterEnd = await magnet.getVestedAmount(magnetId);
       // console.log("amountAfterEnd:", amountAfterEnd.toString());
@@ -580,10 +575,10 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let endTime = now + 60;
+      let endTime = now + END_TIME_DELTA;
       let cliffTime = endTime;
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
@@ -595,13 +590,13 @@ describe('Magnet', function() {
 
       let amountBeforeStart = await magnet.getVestedAmount(magnetId);
       expect(amountBeforeStart).to.equal(0);
-      fastForwardEvmBy(50);
+      fastForwardEvmBy(END_TIME_DELTA - START_TIME_DELTA);
 
       let amountBeforeEnd = await magnet.getVestedAmount(magnetId);
       // console.log("amountBeforeEnd:", amountBeforeEnd.toString());
       // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
       expect(amountBeforeEnd).to.equal(0);
-      fastForwardEvmBy(15);
+      fastForwardEvmBy(START_TIME_DELTA);
 
       let amountAfterEnd = await magnet.getVestedAmount(magnetId);
       // console.log("amountAfterEnd:", amountAfterEnd.toString());
@@ -609,44 +604,170 @@ describe('Magnet', function() {
       expect(amountAfterEnd).to.equal(expectedAmountAtEnd);
     });
 
-    // TODO: add more tests for withdrawal
-    // amountOwed > balance
-    // amountOwed == balance
-    // amountOwed < balance
+    it('Should get correct vested amount owed before and after a withdrawal', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
 
-    // TODO: add tests for getVestedAmountOwed after implementing
-    //       Withdrawal and updating amountWithdrawn variable.
+      await mockERC20.mock.transfer.returns(true);
+      await mockERC20.mock.transferFrom.returns(true);
+
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+      
+      fastForwardEvmBy(END_TIME_DELTA);
+      expect(await magnet.getVestedAmountOwed(magnetId)).to.equal(amount);
+
+      let remainder = 1000;
+      let amountToWithdraw = amount - remainder;
+      await magnet.connect(addr1).withdraw(magnetId, amountToWithdraw);
+      expect(await magnet.getVestedAmountOwed(magnetId)).to.equal(remainder);
+
+      await magnet.connect(addr1).withdraw(magnetId, remainder);
+      expect(await magnet.getVestedAmountOwed(magnetId)).to.equal(0);
+    });
+
+    /* TODO: tests for getAvailableBalance
+        - for recipient
+        - for funder
+        - non-matching address - should always be 0
+
+        balance = 0
+        balance > amountOwed : pay the full amountOwed, but not more. leave remaining balance.
+        balance < amountOwed : pay the full balance. getVestedAmountOwed should still equal the remainder that's leftover.
+    */
   });
 
   describe('Withdraw', function() {
-    it('Withdraw as funder from a VestingMagnet before start time', async function() {
+    it('Withdraw as funder from a VestingMagnet: whole amount before start time', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
 
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
       let magnetId = await magnet.nextVestingMagnetId() - 1;
-      let amount = 1000;
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
       await mockERC20.mock.transferFrom.returns(true);
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
-      let amountToWithdraw = 800;
+      let amountToWithdraw = amount;
       await mockERC20.mock.transfer.returns(true);
       await expect(magnet.withdraw(magnetId, amountToWithdraw))
         .to.emit(magnet, 'Withdrawn')
         .withArgs(owner.address, magnetId, mockERC20.address, amountToWithdraw);
       
-      expect(await magnet.getBalance(magnetId)).to.equal(amount - amountToWithdraw);
-      // TODO: check amountwithdrawn
-      // TODO: withdraw before cliff, before end, after end
+      let resultMagnet = await magnet.vestingMagnets(magnetId);
+      expect(resultMagnet.balance).to.equal(0);
+      expect(resultMagnet.amountWithdrawn).to.be.equal(0);
+    });
+
+    it('Withdraw as funder from a VestingMagnet: whole amount before cliff time', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+  
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
+      await mockERC20.mock.transferFrom.returns(true);
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+  
+      fastForwardEvmBy(CLIFF_TIME_DELTA - START_TIME_DELTA);
+      let amountToWithdraw = amount;
+      await mockERC20.mock.transfer.returns(true);
+      await expect(magnet.withdraw(magnetId, amountToWithdraw))
+        .to.emit(magnet, 'Withdrawn')
+        .withArgs(owner.address, magnetId, mockERC20.address, amountToWithdraw);
+      
+      let resultMagnet = await magnet.vestingMagnets(magnetId);
+      expect(resultMagnet.balance).to.equal(0);
+      expect(resultMagnet.amountWithdrawn).to.be.equal(0);
+    });
+
+    it('Withdraw as funder from a VestingMagnet: partial amount before end time', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+  
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
+      await mockERC20.mock.transferFrom.returns(true);
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+  
+      fastForwardEvmBy(END_TIME_DELTA - START_TIME_DELTA);
+      let amountToWithdraw = amount;
+      await mockERC20.mock.transfer.returns(true);
+      await expect(magnet.withdraw(magnetId, amountToWithdraw))
+        .to.emit(magnet, 'Withdrawn');
+      
+      let resultMagnet = await magnet.vestingMagnets(magnetId);
+      let vestedAmount = estimateVestedAmountIgnoringCliff(END_TIME_DELTA - START_TIME_DELTA, startTime, vestingPeriodLength, amountPerPeriod)
+      expect(resultMagnet.balance)
+        .to.be.at.least(vestedAmount)
+        .and.to.be.below(amount);
+    });
+    
+    it('Withdraw as funder from a VestingMagnet: zero after end time', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+  
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
+      await mockERC20.mock.transferFrom.returns(true);
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+  
+      fastForwardEvmBy(END_TIME_DELTA);
+      let amountToWithdraw = amount;
+      await mockERC20.mock.transfer.returns(true);
+      await expect(magnet.withdraw(magnetId, amountToWithdraw))
+        .to.be.revertedWith('Available balance is zero');
+      
+      let resultMagnet = await magnet.vestingMagnets(magnetId);
+      expect(resultMagnet.balance).to.be.equal(amount);
     });
 
     it('Withdraw as recipient from a VestingMagnet before cliff time', async function() {
@@ -655,47 +776,59 @@ describe('Magnet', function() {
       let recipient = addr1.address;
       let token = mockERC20.address;
       let now = getTimeInSeconds();
-      let startTime = now + 20;
+      let startTime = now + START_TIME_DELTA;
       let vestingPeriodLength = 1;
       let amountPerPeriod = 1;
-      let cliffTime = now + 40;
-      let endTime = now + 60;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
       let magnetId = await magnet.nextVestingMagnetId() - 1;
-      let amount = 40;
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
       await mockERC20.mock.transferFrom.returns(true);
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
-      let amountToWithdraw = 10;
+      let amountToWithdraw = 1000;
       await mockERC20.mock.transfer.returns(true);
 
       // attempt withdraw before startTime
       await expect(magnet.connect(addr1).withdraw(magnetId, amountToWithdraw))
         .to.be.revertedWith('Available balance is zero');
 
-      fastForwardEvmBy(25);
-
       // attempt withdraw before cliffTime
+      fastForwardEvmBy(CLIFF_TIME_DELTA - START_TIME_DELTA);
       await expect(magnet.connect(addr1).withdraw(magnetId, amountToWithdraw))
         .to.be.revertedWith('Available balance is zero');
 
-      fastForwardEvmBy(25);
       // attempt withdraw after cliffTime, before endTime
+      fastForwardEvmBy(END_TIME_DELTA - CLIFF_TIME_DELTA);
       await expect(magnet.connect(addr1).withdraw(magnetId, amountToWithdraw))
         .to.emit(magnet, 'Withdrawn');
-      expect(await magnet.getBalance(magnetId))
-        .to.be.at.least(amount - amountToWithdraw)
-        .and.to.be.below(amount);
-      // TODO: check amountwithdrawn
-      // TODO: for recipient, also test before start, before cliff, before end, after end
+      let resultMagnet = await magnet.vestingMagnets(magnetId);
+      expect(resultMagnet.balance).to.be.equal(amount - amountToWithdraw);
+      expect(resultMagnet.amountWithdrawn).to.be.equal(amountToWithdraw);
+
+      // attempt withdraw after endTime
+      fastForwardEvmBy(START_TIME_DELTA);
+      await expect(magnet.connect(addr1).withdraw(magnetId, amountToWithdraw))
+        .to.emit(magnet, 'Withdrawn');
+      let afterMagnet = await magnet.vestingMagnets(magnetId);
+      expect(afterMagnet.balance).to.be.equal(amount - 2*amountToWithdraw);
+      expect(afterMagnet.amountWithdrawn).to.be.equal(2*amountToWithdraw);
     });
 
-    // TODO: more withdraw tests
+    /* TODO: more withdraw tests
     // - withdraw as neither funder not recipient
+    // - not able to withdraw more than available
+          - as recipient
+          - as funder
 
-    // TODO: if VestingMagnet is finite, prevent funder from depositing more than cumulative amount.
+      // amountOwed > balance
+      // amountOwed == balance
+      // amountOwed < balance
+    */
+   
 
   // describe('Admin', function() {
   //   // TODO: test isAdmins mapping, adminFunder array, helper function

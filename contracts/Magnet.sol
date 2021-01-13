@@ -184,6 +184,8 @@ contract Magnet {
 
         VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
         require(magnet.token == _tokenId, "Deposit token address does not match magnet token");
+        uint amountToFullyFundMagnet = (getLifetimeValue(_vestingMagnetId).sub(magnet.balance)).sub(magnet.amountWithdrawn);
+        _amount = min(_amount, amountToFullyFundMagnet);
         magnet.balance = magnet.balance.add(_amount);
 
         IERC20(_tokenId).safeTransferFrom(msg.sender, address(this), _amount);
@@ -217,7 +219,7 @@ contract Magnet {
         emit Withdrawn(msg.sender, _vestingMagnetId, magnet.token, _amount);
     }
 
-    /// @notice returns the amount available for withdrawal by who
+    /// @notice returns the amount available for withdrawal by _who
     /// @param _vestingMagnetId The ID of the VestingMagnet to withdraw from
     /// @param _who The address for which to query the balance
     function getAvailableBalance(uint _vestingMagnetId, address _who) public view returns (uint) {
@@ -257,6 +259,16 @@ contract Magnet {
         uint timeElapsed = time.sub(magnet.startTime);
         uint numPeriodsElapsed = timeElapsed.div(magnet.vestingPeriodLength);
         return numPeriodsElapsed.mul(magnet.amountPerPeriod);
+    }
+
+    /// @notice returns the lifetime value of a VestingMagnet
+    function getLifetimeValue(uint _vestingMagnetId) public view returns (uint) {
+        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        uint duration = magnet.endTime.sub(magnet.startTime);
+        uint numPeriods = duration.div(magnet.vestingPeriodLength);
+        return numPeriods.mul(magnet.amountPerPeriod);
+        // TODO: If the VestingMagnet runs indefinitely, returns 2**256-1
     }
 
     /// @notice Withdraw funds from N vesting magnets
