@@ -1,6 +1,6 @@
 import {ethers, waffle} from 'hardhat';
 import {assert, expect, use} from 'chai';
-import {utils} from 'ethers';
+import {BigNumber, utils} from 'ethers';
 
 const IERC20 = require('../build/@openzeppelin/contracts/token/ERC20/IERC20.sol/IERC20.json');
 const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
@@ -155,8 +155,6 @@ describe('Magnet', function() {
       await expect(magnet.getAdminsByFunder(owner.address))
         .to.be.revertedWith('Not a funder');
     });
-
-    // TODO: add test to prevent or require funder from being in admins array
   });
 
   describe('VestingMagnet', function() {
@@ -636,19 +634,97 @@ describe('Magnet', function() {
       expect(await magnet.getVestedAmountOwed(magnetId)).to.equal(0);
     });
 
-    /* TODO: tests for getAvailableBalance
-        - for recipient
-        - for funder
-        - non-matching address - should always be 0
+    it('Available Balance should be 0 when balance is 0 for any caller', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
 
-        balance = 0
-        balance > amountOwed : pay the full amountOwed, but not more. leave remaining balance.
-        balance < amountOwed : pay the full balance. getVestedAmountOwed should still equal the remainder that's leftover.
-    */
+      expect(await magnet.getAvailableBalance(magnetId, owner.address)).to.equal(0);
+      expect(await magnet.getAvailableBalance(magnetId, recipient)).to.equal(0);
+      const [ , , other] = await ethers.getSigners();
+      expect(await magnet.getAvailableBalance(magnetId, other.address)).to.equal(0);
+    });
+
+    it('When balance > amountOwed, amountOwed should be available to recipient and remainder available to funder', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      await mockERC20.mock.transfer.returns(true);
+      await mockERC20.mock.transferFrom.returns(true);
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+      
+      fastForwardEvmBy(CLIFF_TIME_DELTA);
+      let expectedAmountAtCliff = estimateVestedAmountIgnoringCliff(cliffTime, startTime, vestingPeriodLength, amountPerPeriod);
+      let expectedAmountAtEnd = estimateVestedAmountIgnoringCliff(endTime, startTime, vestingPeriodLength, amountPerPeriod);
+      
+      let balanceAvailableToRecipient = Number(await magnet.getAvailableBalance(magnetId, recipient));
+      expect(balanceAvailableToRecipient)
+        .and.to.be.above(expectedAmountAtCliff)
+        .and.to.be.below(expectedAmountAtEnd);
+
+      let balanceAvailableToFunder = Number(await magnet.getAvailableBalance(magnetId, owner.address));
+      expect(balanceAvailableToFunder)
+        .and.to.be.below(amount - expectedAmountAtCliff)
+        .and.to.be.above(0);
+
+      expect(balanceAvailableToRecipient + balanceAvailableToFunder).to.equal(amount);
+    });
+
+    it('When balance < amountOwed, balance should be available to recipient and 0 available to funder', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      await mockERC20.mock.transfer.returns(true);
+      await mockERC20.mock.transferFrom.returns(true);
+      let amount = CLIFF_TIME_DELTA / 10;
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+      
+      fastForwardEvmBy(CLIFF_TIME_DELTA);
+      
+      // recipient is owed CLIFF_TIME_DELTA worth of token, but balance is only CLIFF_TIME / 10
+      // the full amount of the balance should be available to recipient
+      // and 0 should be available to funder because the balance has already vested.
+      expect(await magnet.getAvailableBalance(magnetId, recipient))
+        .and.to.be.equal(amount);
+
+      expect(await magnet.getAvailableBalance(magnetId, owner.address))
+        .and.to.be.equal(0);
+    });
+
   });
 
   describe('Withdraw', function() {
-    it('Withdraw as funder from a VestingMagnet: whole amount before start time', async function() {
+    it('Funder should be able to withdraw whole amount before start time', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
 
       let recipient = addr1.address;
@@ -678,7 +754,7 @@ describe('Magnet', function() {
       expect(resultMagnet.amountWithdrawn).to.be.equal(0);
     });
 
-    it('Withdraw as funder from a VestingMagnet: whole amount before cliff time', async function() {
+    it('Funder should be able to withdraw whole amount before cliff time', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
 
       let recipient = addr1.address;
@@ -709,7 +785,7 @@ describe('Magnet', function() {
       expect(resultMagnet.amountWithdrawn).to.be.equal(0);
     });
 
-    it('Withdraw as funder from a VestingMagnet: partial amount before end time', async function() {
+    it('Funder should be able to withdraw whole amount before end time', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
 
       let recipient = addr1.address;
@@ -741,7 +817,7 @@ describe('Magnet', function() {
         .and.to.be.below(amount);
     });
     
-    it('Withdraw as funder from a VestingMagnet: zero after end time', async function() {
+    it('Funder should be able to withdraw zero after end time', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
 
       let recipient = addr1.address;
@@ -770,7 +846,7 @@ describe('Magnet', function() {
       expect(resultMagnet.balance).to.be.equal(amount);
     });
 
-    it('Withdraw as recipient from a VestingMagnet before cliff time', async function() {
+    it('Recipient should be able to withdraw at various times', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
 
       let recipient = addr1.address;
@@ -818,20 +894,172 @@ describe('Magnet', function() {
       expect(afterMagnet.amountWithdrawn).to.be.equal(2*amountToWithdraw);
     });
 
-    /* TODO: more withdraw tests
-    // - withdraw as neither funder not recipient
-    // - not able to withdraw more than available
-          - as recipient
-          - as funder
+    it('Non-funder & Non-recipient should not be able to withdraw', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
 
-      // amountOwed > balance
-      // amountOwed == balance
-      // amountOwed < balance
-    */
-   
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+  
+      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
+      await mockERC20.mock.transferFrom.returns(true);
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+  
+      let amountToWithdraw = 1;
+      await mockERC20.mock.transfer.returns(true);
+      const [ , , other] = await ethers.getSigners();
+      await expect(magnet.connect(other).withdraw(magnetId, amountToWithdraw))
+        .to.be.revertedWith('Only the funder or recipient may withdraw');
+    });
+
+    it('When balance > amountOwed, recipient should be able to withdraw up to amountOwed and no more', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      await mockERC20.mock.transfer.returns(true);
+      await mockERC20.mock.transferFrom.returns(true);
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+      
+      fastForwardEvmBy(CLIFF_TIME_DELTA);
+      let expectedAmountAtCliff = estimateVestedAmountIgnoringCliff(cliffTime, startTime, vestingPeriodLength, amountPerPeriod);
+      let expectedAmountAtEnd = estimateVestedAmountIgnoringCliff(endTime, startTime, vestingPeriodLength, amountPerPeriod);
+      
+      let tooMuch = amount + 100000;
+      await magnet.connect(addr1).withdraw(magnetId, tooMuch);
+
+      let balanceAvailableToRecipient = Number(await magnet.getAvailableBalance(magnetId, recipient));
+      expect(balanceAvailableToRecipient).to.be.equal(0);
+
+      let afterMagnet = await magnet.vestingMagnets(magnetId);
+      expect(afterMagnet.amountWithdrawn)
+        .to.be.below(expectedAmountAtEnd)
+        .to.be.above(expectedAmountAtCliff);
+
+      expect(afterMagnet.balance)
+        .to.be.below(expectedAmountAtEnd)
+        .to.be.above(0);
+
+      expect(Number(afterMagnet.amountWithdrawn) + Number(afterMagnet.balance)).to.equal(amount);
+    });
+
+    it('When balance < amountOwed, recipient should be able to withdraw full balance', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      await mockERC20.mock.transfer.returns(true);
+      await mockERC20.mock.transferFrom.returns(true);
+      let amount = CLIFF_TIME_DELTA / 10;
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+      
+      fastForwardEvmBy(CLIFF_TIME_DELTA);
+
+      let expectedAmountAtCliff = estimateVestedAmountIgnoringCliff(cliffTime, startTime, vestingPeriodLength, amountPerPeriod);
+      await expect(magnet.connect(addr1).withdraw(magnetId, expectedAmountAtCliff))
+        .to.emit(magnet, 'Withdrawn')
+        .withArgs(recipient, magnetId, mockERC20.address, amount);
+
+      expect(await magnet.getAvailableBalance(magnetId, recipient)).and.to.be.equal(0);
+      expect(await magnet.getVestedAmountOwed(magnetId))
+        .and.to.be.above(0)
+        .to.be.below(expectedAmountAtCliff);
+
+      let afterMagnet = await magnet.vestingMagnets(magnetId);
+      expect(afterMagnet.amountWithdrawn).to.equal(amount);
+      expect(afterMagnet.balance).to.equal(0)
+    });
+
+    it('When balance > amountOwed, funder should be able to withdraw (balance - amountOwed) and no more', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      await mockERC20.mock.transfer.returns(true);
+      await mockERC20.mock.transferFrom.returns(true);
+      let amount = END_TIME_DELTA - START_TIME_DELTA;
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+      
+      fastForwardEvmBy(CLIFF_TIME_DELTA);
+      let expectedAmountAtCliff = estimateVestedAmountIgnoringCliff(cliffTime, startTime, vestingPeriodLength, amountPerPeriod);
+      
+      let tooMuch = amount + 100000;
+      await magnet.withdraw(magnetId, tooMuch);
+
+      expect(await magnet.getAvailableBalance(magnetId, owner.address)).to.equal(0);
+
+      let afterMagnet = await magnet.vestingMagnets(magnetId);
+      expect(afterMagnet.amountWithdrawn).to.equal(0);
+      expect(afterMagnet.balance)
+        .to.be.below(amount)
+        .to.be.above(expectedAmountAtCliff);
+    });
+
+    it('When balance < amountOwed, funder should be able to withdraw zero', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+      await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+      let magnetId = 0;
+
+      await mockERC20.mock.transfer.returns(true);
+      await mockERC20.mock.transferFrom.returns(true);
+      let amount = CLIFF_TIME_DELTA / 10;
+      await magnet.deposit(magnetId, amount, mockERC20.address);
+      
+      fastForwardEvmBy(CLIFF_TIME_DELTA);
+      
+      let tooMuch = 1;
+      await expect(magnet.withdraw(magnetId, tooMuch))
+        .to.be.revertedWith('Available balance is zero');
+    });
+  });
 
   // describe('Admin', function() {
   //   // TODO: test isAdmins mapping, adminFunder array, helper function
+  //   // TODO: add a test in mint() to prevent or require funder from being in admins array
   // });
-  });
 });
