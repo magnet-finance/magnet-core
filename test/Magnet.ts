@@ -42,7 +42,11 @@ describe('Magnet', function() {
     const Magnet = await ethers.getContractFactory("Magnet");
     const magnet = await Magnet.deploy();
     await magnet.deployed();
+
+    // initialize mockERC20 contract and spoof return value of 'true'
     const mockERC20 = await deployMockContract(owner, IERC20.abi);
+    await mockERC20.mock.transfer.returns(true);
+    await mockERC20.mock.transferFrom.returns(true);
     return {magnet, mockERC20, owner, addr1};
   }
 
@@ -51,7 +55,12 @@ describe('Magnet', function() {
     const Magnet = await ethers.getContractFactory("Magnet");
     const magnet = await Magnet.deploy();
     await magnet.deployed();
+
+    // initialize mockERC20 contract and spoof return value of 'true'
     const mockERC20 = await deployMockContract(owner, IERC20.abi);
+    await mockERC20.mock.transfer.returns(true);
+    await mockERC20.mock.transferFrom.returns(true);
+
     let admins = [addr1.address];
     let name = "Funder 1";
     let description = "Description 1";
@@ -65,7 +74,11 @@ describe('Magnet', function() {
     const Magnet = await ethers.getContractFactory("Magnet");
     const magnet = await Magnet.deploy();
     await magnet.deployed();
+    
+    // initialize mockERC20 contract and spoof return value of 'true'
     const mockERC20 = await deployMockContract(owner, IERC20.abi);
+    await mockERC20.mock.transfer.returns(true);
+    await mockERC20.mock.transferFrom.returns(true);
     
     let admins = [addr1.address];
     let name = "Funder 1";
@@ -362,8 +375,6 @@ describe('Magnet', function() {
       let currentBalance = (await magnet.vestingMagnets(magnetId)).balance;
       let expectedBalance = currentBalance + amount;
 
-      // initialize the mock contract to spoof return 'true' when transferFrom is called
-      await mockERC20.mock.transferFrom.returns(true);
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
         .to.emit(magnet, 'Deposited')
         .withArgs(owner.address, magnetId, amount);
@@ -379,7 +390,6 @@ describe('Magnet', function() {
       let magnetId = await magnet.nextVestingMagnetId() + 10;
       let amount = 0;
 
-      await mockERC20.mock.transferFrom.returns(true);
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
         .to.be.revertedWith('Magnet does not exist');
     });
@@ -389,7 +399,6 @@ describe('Magnet', function() {
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = 0;
 
-      await mockERC20.mock.transferFrom.returns(true);
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
         .to.be.revertedWith('Deposit must be greater than zero');
     });
@@ -400,7 +409,6 @@ describe('Magnet', function() {
       let amount = 1000;
       let wrongToken = await deployMockContract(owner, IERC20.abi);
 
-      await mockERC20.mock.transferFrom.returns(true);
       await expect(magnet.deposit(magnetId, amount, wrongToken.address))
         .to.be.revertedWith('Deposit token address does not match magnet token');
     });
@@ -410,7 +418,6 @@ describe('Magnet', function() {
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = 1000;
 
-      await mockERC20.mock.transferFrom.returns(true);
       await expect(magnet.connect(addr1).deposit(magnetId, amount, mockERC20.address))
         .to.be.revertedWith('Caller is not the funder of this magnet');
     });
@@ -421,7 +428,6 @@ describe('Magnet', function() {
       let amount = ethers.constants.MaxUint256;
       let totalLifetimeValue = END_TIME_DELTA - START_TIME_DELTA;
 
-      await mockERC20.mock.transferFrom.returns(true);
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
         .to.emit(magnet, 'Deposited')
         .withArgs(owner.address, magnetId, totalLifetimeValue);
@@ -432,7 +438,6 @@ describe('Magnet', function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let totalLifetimeValue = END_TIME_DELTA - START_TIME_DELTA;
-      await mockERC20.mock.transferFrom.returns(true);
 
       let amount1 = totalLifetimeValue / 2;
       await expect(magnet.deposit(magnetId, amount1, mockERC20.address))
@@ -613,9 +618,6 @@ describe('Magnet', function() {
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
 
-      await mockERC20.mock.transfer.returns(true);
-      await mockERC20.mock.transferFrom.returns(true);
-
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
       
@@ -665,8 +667,6 @@ describe('Magnet', function() {
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
 
-      await mockERC20.mock.transfer.returns(true);
-      await mockERC20.mock.transferFrom.returns(true);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
       
@@ -701,8 +701,6 @@ describe('Magnet', function() {
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
 
-      await mockERC20.mock.transfer.returns(true);
-      await mockERC20.mock.transferFrom.returns(true);
       let amount = CLIFF_TIME_DELTA / 10;
       await magnet.deposit(magnetId, amount, mockERC20.address);
       
@@ -737,11 +735,9 @@ describe('Magnet', function() {
   
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = END_TIME_DELTA - START_TIME_DELTA;
-      await mockERC20.mock.transferFrom.returns(true);
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
       let amountToWithdraw = amount;
-      await mockERC20.mock.transfer.returns(true);
       await expect(magnet.withdraw(magnetId, amountToWithdraw))
         .to.emit(magnet, 'Withdrawn')
         .withArgs(owner.address, magnetId, mockERC20.address, amountToWithdraw);
@@ -767,12 +763,10 @@ describe('Magnet', function() {
   
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = END_TIME_DELTA - START_TIME_DELTA;
-      await mockERC20.mock.transferFrom.returns(true);
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
       fastForwardEvmBy(CLIFF_TIME_DELTA - START_TIME_DELTA);
       let amountToWithdraw = amount;
-      await mockERC20.mock.transfer.returns(true);
       await expect(magnet.withdraw(magnetId, amountToWithdraw))
         .to.emit(magnet, 'Withdrawn')
         .withArgs(owner.address, magnetId, mockERC20.address, amountToWithdraw);
@@ -798,12 +792,10 @@ describe('Magnet', function() {
   
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = END_TIME_DELTA - START_TIME_DELTA;
-      await mockERC20.mock.transferFrom.returns(true);
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
       fastForwardEvmBy(END_TIME_DELTA - START_TIME_DELTA);
       let amountToWithdraw = amount;
-      await mockERC20.mock.transfer.returns(true);
       await expect(magnet.withdraw(magnetId, amountToWithdraw))
         .to.emit(magnet, 'Withdrawn');
       
@@ -830,12 +822,10 @@ describe('Magnet', function() {
   
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = END_TIME_DELTA - START_TIME_DELTA;
-      await mockERC20.mock.transferFrom.returns(true);
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
       fastForwardEvmBy(END_TIME_DELTA);
       let amountToWithdraw = amount;
-      await mockERC20.mock.transfer.returns(true);
       await expect(magnet.withdraw(magnetId, amountToWithdraw))
         .to.be.revertedWith('Available balance is zero');
       
@@ -859,11 +849,9 @@ describe('Magnet', function() {
   
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = END_TIME_DELTA - START_TIME_DELTA;
-      await mockERC20.mock.transferFrom.returns(true);
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
       let amountToWithdraw = 1000;
-      await mockERC20.mock.transfer.returns(true);
 
       // attempt withdraw before startTime
       await expect(magnet.connect(addr1).withdraw(magnetId, amountToWithdraw))
@@ -895,7 +883,6 @@ describe('Magnet', function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       let magnetId = await magnet.getMagnetCount() + 10;
       let amountToWithdraw = 1;
-      await mockERC20.mock.transfer.returns(true);
       await expect(magnet.withdraw(magnetId, amountToWithdraw))
         .to.be.revertedWith('Magnet does not exist');
     });
@@ -916,11 +903,9 @@ describe('Magnet', function() {
   
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = END_TIME_DELTA - START_TIME_DELTA;
-      await mockERC20.mock.transferFrom.returns(true);
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
       let amountToWithdraw = 1;
-      await mockERC20.mock.transfer.returns(true);
       const [ , , other] = await ethers.getSigners();
       await expect(magnet.connect(other).withdraw(magnetId, amountToWithdraw))
         .to.be.revertedWith('Caller is not the funder or recipient of this magnet');
@@ -940,8 +925,6 @@ describe('Magnet', function() {
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
 
-      await mockERC20.mock.transfer.returns(true);
-      await mockERC20.mock.transferFrom.returns(true);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
       
@@ -981,8 +964,6 @@ describe('Magnet', function() {
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
 
-      await mockERC20.mock.transfer.returns(true);
-      await mockERC20.mock.transferFrom.returns(true);
       let amount = CLIFF_TIME_DELTA / 10;
       await magnet.deposit(magnetId, amount, mockERC20.address);
       
@@ -1017,8 +998,6 @@ describe('Magnet', function() {
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
 
-      await mockERC20.mock.transfer.returns(true);
-      await mockERC20.mock.transferFrom.returns(true);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
       
@@ -1051,8 +1030,6 @@ describe('Magnet', function() {
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
       let magnetId = 0;
 
-      await mockERC20.mock.transfer.returns(true);
-      await mockERC20.mock.transferFrom.returns(true);
       let amount = CLIFF_TIME_DELTA / 10;
       await magnet.deposit(magnetId, amount, mockERC20.address);
       
