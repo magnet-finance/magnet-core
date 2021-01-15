@@ -79,7 +79,6 @@ contract Magnet {
     /// @notice isAdmin[admin][funder] = true if admin is an admin for this funder.
     mapping (address => mapping (address => bool)) public isAdmin;
 
-
     /// @notice An event thats emitted when a new Funder is registered
     event FunderRegistered(address indexed funder, uint indexed vestingMagnetId);
     
@@ -311,21 +310,10 @@ contract Magnet {
         return nextVestingMagnetId;
     }
 
-    function getFunderOfMagnet(uint _vestingMagnetId) public view returns (address) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
-        return vestingMagnets[_vestingMagnetId].funder;
-    }
-    
     /// @notice Get the number of magnets created by the funder.    
     function getMagnetCountByFunder(address _funder) public view returns (uint) {
       require(isFunder(_funder), "Not a funder");
       return funders[_funder].magnetIds.length;
-    }
-
-    /// @notice Get the balance of funder ID
-    function getBalance(uint _vestingMagnetId) public view returns (uint) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
-        return vestingMagnets[_vestingMagnetId].balance;
     }
 
     /// @notice Get all magnets belonging to _recipient

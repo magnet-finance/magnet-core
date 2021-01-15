@@ -202,10 +202,10 @@ describe('Magnet', function() {
       expect(m.cliffTime).to.equal(cliffTime);
       expect(m.endTime).to.equal(endTime);
       expect(m.message).to.equal(message);
+      expect(m.balance).to.equal(0);
 
       expect(await magnet.isMagnet(expectedId)).to.be.equal(true);
       expect(await magnet.getMagnetCount()).to.equal(1);
-      expect(await magnet.getBalance(expectedId)).to.equal(0);
       expect(await magnet.getMagnetCountByFunder(owner.address)).to.be.equal(1);
       expect((await magnet.getMagnetIdsByFunder(owner.address))[0]).to.equal(0);
       expect((await magnet.getMagnetsByRecipient(recipient))[0])
@@ -215,12 +215,6 @@ describe('Magnet', function() {
     it('Is not magnet', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       expect(await magnet.isMagnet(0)).to.be.equal(false);
-    });
-
-    it('Reverts if magnet does not exist', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
-      await expect(magnet.getBalance(0))
-        .to.be.revertedWith('Magnet does not exist');
     });
 
     it('Revert if recipient is zero address', async function() {
@@ -372,7 +366,7 @@ describe('Magnet', function() {
       let expectedRecipient = magnet.address;
       let magnetId = await magnet.nextVestingMagnetId() - 1;
       let amount = 1000;
-      let currentBalance = await magnet.getBalance(magnetId);
+      let currentBalance = (await magnet.vestingMagnets(magnetId)).balance;
       let expectedBalance = currentBalance + amount;
 
       // initialize the mock contract to spoof return 'true' when transferFrom is called
@@ -384,7 +378,7 @@ describe('Magnet', function() {
       // Waffle's calledOnContractWith is not currently supported by Hardhat. (1/5/2021)
       // expect("transferFrom").to.be.calledOnContractWith(mockERC20, [expectedSender, expectedRecipient, amount]);
 
-      expect(await magnet.getBalance(magnetId)).to.equal(expectedBalance);
+      expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(expectedBalance);
     });
 
     it('Should revert if depositing 0', async function() {
@@ -428,7 +422,7 @@ describe('Magnet', function() {
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
         .to.emit(magnet, 'Deposited')
         .withArgs(owner.address, magnetId, totalLifetimeValue);
-      expect(await magnet.getBalance(magnetId)).to.equal(totalLifetimeValue);
+      expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(totalLifetimeValue);
     });
 
     it('Should only top up to the total lifetime value of a finite VestingMagnet', async function() {
@@ -441,13 +435,13 @@ describe('Magnet', function() {
       await expect(magnet.deposit(magnetId, amount1, mockERC20.address))
         .to.emit(magnet, 'Deposited')
         .withArgs(owner.address, magnetId, amount1);
-      expect(await magnet.getBalance(magnetId)).to.equal(amount1);
+      expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(amount1);
 
       let amount2 = totalLifetimeValue;
       await expect(magnet.deposit(magnetId, amount2, mockERC20.address))
         .to.emit(magnet, 'Deposited')
         .withArgs(owner.address, magnetId, totalLifetimeValue - amount1);
-      expect(await magnet.getBalance(magnetId)).to.equal(totalLifetimeValue);
+      expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(totalLifetimeValue);
     });
   });
 
