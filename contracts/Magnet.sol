@@ -42,10 +42,10 @@ contract Magnet {
      * @notice Record details for a Vesting Magnet
      * @notice funder - The address of the funder who created and deposits to this magnet.
      * @notice startTime - The unix time at which vesting begins.
-     * @notice vestingPeriodLength - The period of time (in seconds) between each vesting event. Set to 0 for real-time vesting.
+     * @notice vestingPeriodLength - The period of time (in seconds) between each vesting event. Set to 1 for real-time vesting.
      * @notice amountPerPeriod - The amount of token to vest to the recipient per period.
      * @notice cliffTime - Prior to this unix timestamp, tokens are vesting but not able to be withdrawn by recipient until this timestamp.
-     * @notice endTime - The time at which vesting will stop.
+     * @notice endTime - The time at which vesting will stop. To create an indefinite vesting package, set to 2 ** 256 -1.
      * @notice amountWithdrawn - Cumulative amount of token that has been withrawn by recipient since startTime.
      * @notice balance - Current balance of token deposited by the Funder and allocated to this Magnet. Some portion of these funds may have vested already, but not yet withdrawn.
      * @notice message - Optional message for the Funder to use. For example, to explain the purpose of this vesting package.
@@ -59,7 +59,7 @@ contract Magnet {
         uint vestingPeriodLength;
         uint amountPerPeriod;
         uint cliffTime;
-        uint endTime;  // TODO:  can be infinite - how? 0? less than startTime? max uint?  do i even need this? maybe # of periods instead? - count how many passed already
+        uint endTime;
         uint amountWithdrawn;
         uint balance;
         string message;
@@ -156,6 +156,7 @@ contract Magnet {
     }
 
     /// @notice Mint a new VestingMagnet with 0 balance.
+    /// @dev to create a VestingMaget with indefinite end time, use _endTime = 2 ** 256 -1
     function mintVestingMagnet(
         address _recipient,
         address _token,
@@ -170,10 +171,8 @@ contract Magnet {
         require(_recipient != address(0), "Recipient cant be the zero address");
         require(_startTime >= block.timestamp, "Start time is in the past");
         require(_cliffTime >= _startTime, "Cliff time must be >= start time");
-        require(_endTime > _startTime && _endTime >= _cliffTime, "End time must be > start time and cliff time");
-        uint duration = _endTime.sub(_startTime);
-        require(_vestingPeriodLength <= duration, "Period must be < duration");
-        require(duration.mod(_vestingPeriodLength, "Vesting period length cannot be zero") == 0, "Duration must be a multiple of period length");
+        require(_endTime > _startTime && _endTime >= _cliffTime, "End time must be > start time and >= cliff time");
+        require(_vestingPeriodLength > 0 && _vestingPeriodLength <= _endTime.sub(_startTime), "Period length must be > 0 and <= duration");
         require(_amountPerPeriod > 0, "Amount must be >0");
         
         vestingMagnets[nextVestingMagnetId] = VestingMagnet({
@@ -203,7 +202,6 @@ contract Magnet {
         public magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId, msg.sender) returns(bool)
     {
         require(_amount > 0, "Deposit must be greater than zero");
-
         VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
         require(magnet.token == _tokenId, "Deposit token address does not match magnet token");
         uint amountToFullyFundMagnet = (getLifetimeValue(_vestingMagnetId).sub(magnet.balance)).sub(magnet.amountWithdrawn);
@@ -284,7 +282,6 @@ contract Magnet {
         uint duration = magnet.endTime.sub(magnet.startTime);
         uint numPeriods = duration.div(magnet.vestingPeriodLength);
         return numPeriods.mul(magnet.amountPerPeriod);
-        // TODO: If the VestingMagnet runs indefinitely, returns 2**256-1
     }
 
     /// @notice Withdraw funds from N vesting magnets
