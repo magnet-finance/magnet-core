@@ -102,6 +102,29 @@ contract Magnet {
     // getPastEvents({ filter: funderId }) + fancy javascript math to calculate historicals
     // getPastEvents({ filter: funderId }) + to get most recent transactions - might need additional lookup to get all data about each tx
 
+    modifier magnetExists(uint _id) {
+        require(_id < nextVestingMagnetId, 'Magnet does not exist');
+        _;
+    }
+
+    modifier funderExists(address _funder) {
+        require(isFunder(_funder), 'Funder does not exist');
+        _;
+    }
+
+    modifier onlyFunder(uint _vestingMagnetId, address _funder) {
+        require(vestingMagnets[_vestingMagnetId].funder == _funder, 'Caller is not the funder of this magnet');
+        _;
+    }
+
+    modifier onlyFunderOrRecipient(uint _vestingMagnetId, address _who) {
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        require(
+            _who == vestingMagnets[_vestingMagnetId].funder || _who == vestingMagnets[_vestingMagnetId].recipient,
+            'Caller is not the funder or recipient of this magnet'
+        );
+        _;
+    }
 
     /// @notice Register your address as a new Funder
     function registerFunder(
@@ -176,9 +199,9 @@ contract Magnet {
     }
 
     /// @notice Deposit to a VestingMagnet
-    function deposit(uint _vestingMagnetId, uint _amount, address _tokenId) public returns(bool) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
-        require(isFunderOfMagnet(_vestingMagnetId, msg.sender), "Only the funder can deposit to a magnet");
+    function deposit(uint _vestingMagnetId, uint _amount, address _tokenId)
+        public magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId, msg.sender) returns(bool)
+    {
         require(_amount > 0, "Deposit must be greater than zero");
 
         VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
@@ -199,11 +222,10 @@ contract Magnet {
         // for each entry...
     }
 
-    /// @notice Withdraw funds from a VestingMagnet. Called by recipient of the VestingMagnet.
-    function withdraw(uint _vestingMagnetId, uint _amount) public returns(bool) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
-        require(isFunderOrRecipientOfMagnet(_vestingMagnetId, msg.sender), "Only the funder or recipient may withdraw");
-        
+    /// @notice Withdraw funds from a VestingMagnet
+    function withdraw(uint _vestingMagnetId, uint _amount)
+        public magnetExists(_vestingMagnetId) onlyFunderOrRecipient(_vestingMagnetId, msg.sender) returns (bool)
+    {        
         uint available = getAvailableBalance(_vestingMagnetId, msg.sender);
         _amount = min(_amount, available);
         require(_amount > 0, "Available balance is zero");
@@ -221,8 +243,7 @@ contract Magnet {
     /// @notice returns the amount available for withdrawal by _who
     /// @param _vestingMagnetId The ID of the VestingMagnet to withdraw from
     /// @param _who The address for which to query the balance
-    function getAvailableBalance(uint _vestingMagnetId, address _who) public view returns (uint) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+    function getAvailableBalance(uint _vestingMagnetId, address _who) public view magnetExists(_vestingMagnetId) returns (uint) {
         VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
         uint amountVestedToRecipient = min(getVestedAmountOwed(_vestingMagnetId), magnet.balance);
         if (_who == magnet.recipient) return amountVestedToRecipient;
@@ -232,8 +253,7 @@ contract Magnet {
 
     /// @notice returns the amount that is fully vested to the user and not yet withdrawn
     /// @dev if recipient has never withdrawn from the VestingMagnet, this is equivalent to getVestedAmount
-    function getVestedAmountOwed(uint _vestingMagnetId) public view returns (uint) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+    function getVestedAmountOwed(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
         uint amountWithdrawn = vestingMagnets[_vestingMagnetId].amountWithdrawn;
         uint vestedAmount = getVestedAmount(_vestingMagnetId);
         return vestedAmount.sub(amountWithdrawn);
@@ -241,8 +261,7 @@ contract Magnet {
 
     /// @notice returns the amount that has vested to recipient since startTime
     /// @dev after cliffTime, this is equivalent to getVestedAmountIgnoringCliff
-    function getVestedAmount(uint _vestingMagnetId) public view returns (uint) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+    function getVestedAmount(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
         if (block.timestamp < vestingMagnets[_vestingMagnetId].cliffTime) {
             return 0;
         }
@@ -250,8 +269,7 @@ contract Magnet {
     }
 
     /// @notice returns the progress made toward vesting since startTime, if the cliff is ignored
-    function getVestedAmountIgnoringCliff(uint _vestingMagnetId) public view returns (uint) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+    function getVestedAmountIgnoringCliff(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
         VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
         if (block.timestamp <= magnet.startTime) return 0;
         uint time = min(block.timestamp, magnet.endTime);
@@ -261,8 +279,7 @@ contract Magnet {
     }
 
     /// @notice returns the lifetime value of a VestingMagnet
-    function getLifetimeValue(uint _vestingMagnetId) public view returns (uint) {
-        require(isMagnet(_vestingMagnetId), "Magnet does not exist");
+    function getLifetimeValue(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
         VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
         uint duration = magnet.endTime.sub(magnet.startTime);
         uint numPeriods = duration.div(magnet.vestingPeriodLength);
@@ -283,25 +300,11 @@ contract Magnet {
         // the one-to-many doc also references it, but points to the above for implmentation. https://medium.com/robhitchens/enforcing-referential-integrity-in-ethereum-smart-contracts-a9ab1427ff42
         // TODO: emit Terminated event
     }
-    
+
     function isFunder(address _funder) public view returns (bool) {
-        if (fundersList.length == 0) return false;
-        return fundersList[funders[_funder].id] == _funder;
+        return fundersList.length > 0 && fundersList[funders[_funder].id] == _funder;
     }
-    
-    function isMagnet(uint _vestingMagnetId) public view returns (bool) {
-        return _vestingMagnetId < nextVestingMagnetId;
-    }
-
-    function isFunderOfMagnet(uint _vestingMagnetId, address _funder) public view returns (bool) {
-        return vestingMagnets[_vestingMagnetId].funder == _funder;
-    }
-
-    function isFunderOrRecipientOfMagnet(uint _vestingMagnetId, address _who) public view returns (bool) {
-        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
-        return (_who == magnet.funder || _who == magnet.recipient);
-    }
-    
+        
     function getFunderCount() public view returns (uint) {
         return fundersList.length;
     }   
@@ -311,8 +314,7 @@ contract Magnet {
     }
 
     /// @notice Get the number of magnets created by the funder.    
-    function getMagnetCountByFunder(address _funder) public view returns (uint) {
-      require(isFunder(_funder), "Not a funder");
+    function getMagnetCountByFunder(address _funder) public view funderExists(_funder) returns (uint) {
       return funders[_funder].magnetIds.length;
     }
 
@@ -321,14 +323,12 @@ contract Magnet {
         return recipientToVestingMagnetIds[_recipient];
     }
     /// @notice Get all magnets funded by _funder
-    function getMagnetIdsByFunder(address _funder) public view returns (uint[] memory) {
-      require(isFunder(_funder), "Not a funder");
+    function getMagnetIdsByFunder(address _funder) public view funderExists(_funder) returns (uint[] memory) {
       return funders[_funder].magnetIds;
     }
 
     /// @notice Get all admins of _funder
-    function getAdminsByFunder(address _funder) public view returns (address[] memory) {
-      require(isFunder(_funder), "Not a funder");
+    function getAdminsByFunder(address _funder) public view funderExists(_funder) returns (address[] memory) {
       return funders[_funder].admins;
     }
     
@@ -342,14 +342,10 @@ contract Magnet {
 		return a < b ? a : b;
 	}
 
-    // TODO: add modifiers to functions
-    /// recipientOnly, funderOnly, adminOnly, isMagnet, isFunder
-
     // TODO: setters to update Funder metadata (name, image, admins, etc).
-    // require onlyFunder (or just msg.sender).
-    // can Admins perform edits?
-    // require name is not empty string
+    // require onlyFunder. can Admins perform edits?
     
     // TODO: setters to update Magnet metadata
+    // require onlyFunder or onlyAdmin
     // be cautious how does this affect balances and vesting?
 }

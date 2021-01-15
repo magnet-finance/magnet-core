@@ -100,7 +100,6 @@ describe('Magnet', function() {
       expect(await magnet.getFunderCount()).to.equal(0);
       expect(await magnet.isFunder(owner.address)).to.be.equal(false);
       expect(await magnet.getMagnetCount()).to.equal(0);
-      expect(await magnet.isMagnet(0)).to.be.equal(false);
     });
   });
 
@@ -149,11 +148,11 @@ describe('Magnet', function() {
     it('Reverts if funder does not exist', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureBase);
       await expect(magnet.getMagnetCountByFunder(owner.address))
-        .to.be.revertedWith('Not a funder');
+        .to.be.revertedWith('Funder does not exist');
       await expect(magnet.getMagnetIdsByFunder(owner.address))
-        .to.be.revertedWith('Not a funder');
+        .to.be.revertedWith('Funder does not exist');
       await expect(magnet.getAdminsByFunder(owner.address))
-        .to.be.revertedWith('Not a funder');
+        .to.be.revertedWith('Funder does not exist');
     });
   });
 
@@ -204,17 +203,11 @@ describe('Magnet', function() {
       expect(m.message).to.equal(message);
       expect(m.balance).to.equal(0);
 
-      expect(await magnet.isMagnet(expectedId)).to.be.equal(true);
       expect(await magnet.getMagnetCount()).to.equal(1);
       expect(await magnet.getMagnetCountByFunder(owner.address)).to.be.equal(1);
       expect((await magnet.getMagnetIdsByFunder(owner.address))[0]).to.equal(0);
       expect((await magnet.getMagnetsByRecipient(recipient))[0])
         .to.equal(expectedId);
-    });
-
-    it('Is not magnet', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
-      expect(await magnet.isMagnet(0)).to.be.equal(false);
     });
 
     it('Revert if recipient is zero address', async function() {
@@ -381,6 +374,16 @@ describe('Magnet', function() {
       expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(expectedBalance);
     });
 
+    it('Should revert if magnet does not exist', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      let magnetId = await magnet.nextVestingMagnetId() + 10;
+      let amount = 0;
+
+      await mockERC20.mock.transferFrom.returns(true);
+      await expect(magnet.deposit(magnetId, amount, mockERC20.address))
+        .to.be.revertedWith('Magnet does not exist');
+    });
+
     it('Should revert if depositing 0', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
       let magnetId = await magnet.nextVestingMagnetId() - 1;
@@ -409,7 +412,7 @@ describe('Magnet', function() {
 
       await mockERC20.mock.transferFrom.returns(true);
       await expect(magnet.connect(addr1).deposit(magnetId, amount, mockERC20.address))
-        .to.be.revertedWith('Only the funder can deposit to a magnet');
+        .to.be.revertedWith('Caller is not the funder of this magnet');
     });
 
     it('Should only allow deposits up to total lifetime value of a finite VestingMagnet', async function() {
@@ -888,7 +891,16 @@ describe('Magnet', function() {
       expect(afterMagnet.amountWithdrawn).to.be.equal(2*amountToWithdraw);
     });
 
-    it('Non-funder & Non-recipient should not be able to withdraw', async function() {
+    it('Should revert if magnet does not exist', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let magnetId = await magnet.getMagnetCount() + 10;
+      let amountToWithdraw = 1;
+      await mockERC20.mock.transfer.returns(true);
+      await expect(magnet.withdraw(magnetId, amountToWithdraw))
+        .to.be.revertedWith('Magnet does not exist');
+    });
+
+    it('Should revert if called by non-funder and non-recipient', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
 
       let recipient = addr1.address;
@@ -911,7 +923,7 @@ describe('Magnet', function() {
       await mockERC20.mock.transfer.returns(true);
       const [ , , other] = await ethers.getSigners();
       await expect(magnet.connect(other).withdraw(magnetId, amountToWithdraw))
-        .to.be.revertedWith('Only the funder or recipient may withdraw');
+        .to.be.revertedWith('Caller is not the funder or recipient of this magnet');
     });
 
     it('When balance > amountOwed, recipient should be able to withdraw up to amountOwed and no more', async function() {
