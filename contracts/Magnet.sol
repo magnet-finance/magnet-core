@@ -199,7 +199,7 @@ contract Magnet {
 
     /// @notice Deposit to a VestingMagnet
     function deposit(uint _vestingMagnetId, uint _amount, address _tokenId)
-        public magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId, msg.sender) returns(bool)
+        public magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId, msg.sender)
     {
         require(_amount > 0, "Deposit must be greater than zero");
         VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
@@ -210,7 +210,6 @@ contract Magnet {
 
         IERC20(_tokenId).safeTransferFrom(msg.sender, address(this), _amount);
         emit Deposited(msg.sender, _vestingMagnetId, _amount);
-        return true;
     }
 
     /// @notice Deposit funds to multiple VestingMagnets in a single transaction
@@ -222,7 +221,7 @@ contract Magnet {
 
     /// @notice Withdraw funds from a VestingMagnet
     function withdraw(uint _vestingMagnetId, uint _amount)
-        public magnetExists(_vestingMagnetId) onlyFunderOrRecipient(_vestingMagnetId, msg.sender) returns (bool)
+        public magnetExists(_vestingMagnetId) onlyFunderOrRecipient(_vestingMagnetId, msg.sender)
     {        
         uint available = getAvailableBalance(_vestingMagnetId, msg.sender);
         _amount = min(_amount, available);
