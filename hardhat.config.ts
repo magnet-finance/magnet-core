@@ -1,5 +1,6 @@
 import { task } from "hardhat/config";
 import "@nomiclabs/hardhat-waffle";
+import "hardhat-typechain";
 
 // Learn how to write a custom Hardhat task at
 // https://hardhat.org/guides/create-task.html
@@ -19,6 +20,9 @@ export default {
   paths: {
     sources: "./contracts",
     artifacts: "./build",
+  },
+  typechain: {
+    outDir: "build/typechain",
   },
   solidity: "0.6.12",
 };

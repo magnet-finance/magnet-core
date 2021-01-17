@@ -1,12 +1,15 @@
-import {ethers, waffle} from 'hardhat';
-import {assert, expect, use} from 'chai';
-import {utils} from 'ethers';
+import { ethers, waffle } from 'hardhat';
+import { assert, expect, use } from 'chai';
+import { utils } from 'ethers';
+
+import { Magnet } from "../build/typechain/Magnet";
+import { Magnet__factory } from "../build/typechain/factories/Magnet__factory";
 
 const IERC20 = require('../build/@openzeppelin/contracts/token/ERC20/IERC20.sol/IERC20.json');
-const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
 const {loadFixture, deployMockContract, solidity } = waffle;
 use(solidity);
 
+const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
 const START_TIME_DELTA = 20;
 const CLIFF_TIME_DELTA = 864020; // 10 days after start time
 const END_TIME_DELTA = 3456020; // 40 days after start time
@@ -25,10 +28,6 @@ function duration(startTime, endTime) {
   return endTime - startTime;
 }
 
-function percentVested(startTime, atTime, endTime) {
-  return ((atTime - startTime) / duration(startTime, endTime));
-}
-
 /// @notice helper function to calculate the vested amount, ignoring cliff
 function estimateVestedAmountIgnoringCliff(atTime, startTime, vestingPeriodLength, amountPerPeriod) {
   if (atTime < startTime) return 0;
@@ -39,8 +38,8 @@ describe('Magnet', function() {
 
   async function fixtureBase() {
     const [owner, addr1] = await ethers.getSigners();
-    const Magnet = await ethers.getContractFactory("Magnet");
-    const magnet = await Magnet.deploy();
+    const Magnet = await ethers.getContractFactory("Magnet") as Magnet__factory;
+    const magnet = await Magnet.deploy() as Magnet;
     await magnet.deployed();
 
     // initialize mockERC20 contract and spoof return value of 'true'
@@ -52,8 +51,8 @@ describe('Magnet', function() {
 
   async function fixtureRegisterFunder() {
     const [owner, addr1] = await ethers.getSigners();
-    const Magnet = await ethers.getContractFactory("Magnet");
-    const magnet = await Magnet.deploy();
+    const Magnet = await ethers.getContractFactory("Magnet") as Magnet__factory;
+    const magnet = await Magnet.deploy() as Magnet;
     await magnet.deployed();
 
     // initialize mockERC20 contract and spoof return value of 'true'
@@ -71,8 +70,8 @@ describe('Magnet', function() {
 
   async function fixtureOneFunderAndMagnet() {
     const [owner, addr1] = await ethers.getSigners();
-    const Magnet = await ethers.getContractFactory("Magnet");
-    const magnet = await Magnet.deploy();
+    const Magnet = await ethers.getContractFactory("Magnet") as Magnet__factory;
+    const magnet = await Magnet.deploy() as Magnet;
     await magnet.deployed();
     
     // initialize mockERC20 contract and spoof return value of 'true'
@@ -354,10 +353,10 @@ describe('Magnet', function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
       let expectedSender = owner.address;
       let expectedRecipient = magnet.address;
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = 1000;
       let currentBalance = (await magnet.vestingMagnets(magnetId)).balance;
-      let expectedBalance = currentBalance + amount;
+      let expectedBalance = currentBalance.add(amount);
 
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
         .to.emit(magnet, 'Deposited')
@@ -371,7 +370,7 @@ describe('Magnet', function() {
 
     it('Should revert if magnet does not exist', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
-      let magnetId = await magnet.nextVestingMagnetId() + 10;
+      let magnetId = (await magnet.nextVestingMagnetId()).add(1);
       let amount = 0;
 
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
@@ -380,7 +379,7 @@ describe('Magnet', function() {
 
     it('Should revert if depositing 0', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = 0;
 
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
@@ -389,7 +388,7 @@ describe('Magnet', function() {
 
     it('Should revert if depositing a different token', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = 1000;
       let wrongToken = await deployMockContract(owner, IERC20.abi);
 
@@ -399,7 +398,7 @@ describe('Magnet', function() {
 
     it('Should revert if non-funder tries to deposit', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = 1000;
 
       await expect(magnet.connect(addr1).deposit(magnetId, amount, mockERC20.address))
@@ -408,7 +407,7 @@ describe('Magnet', function() {
 
     it('Should only allow deposits up to total lifetime value of a finite VestingMagnet', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = ethers.constants.MaxUint256;
       let totalLifetimeValue = END_TIME_DELTA - START_TIME_DELTA;
 
@@ -420,7 +419,7 @@ describe('Magnet', function() {
 
     it('Should only top up to the total lifetime value of a finite VestingMagnet', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let totalLifetimeValue = END_TIME_DELTA - START_TIME_DELTA;
 
       let amount1 = totalLifetimeValue / 2;
@@ -744,7 +743,7 @@ describe('Magnet', function() {
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
@@ -772,7 +771,7 @@ describe('Magnet', function() {
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
@@ -801,7 +800,7 @@ describe('Magnet', function() {
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
@@ -831,7 +830,7 @@ describe('Magnet', function() {
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
@@ -858,7 +857,7 @@ describe('Magnet', function() {
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
@@ -892,7 +891,7 @@ describe('Magnet', function() {
 
     it('Should revert if magnet does not exist', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
-      let magnetId = await magnet.getMagnetCount() + 10;
+      let magnetId = await (await magnet.getMagnetCount()).add(10);
       let amountToWithdraw = 1;
       await expect(magnet.withdraw(magnetId, amountToWithdraw))
         .to.be.revertedWith('Magnet does not exist');
@@ -912,7 +911,7 @@ describe('Magnet', function() {
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = END_TIME_DELTA - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
@@ -1065,7 +1064,7 @@ describe('Magnet', function() {
       let message = "Message 1";
       await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
   
-      let magnetId = await magnet.nextVestingMagnetId() - 1;
+      let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = Number.MAX_SAFE_INTEGER - START_TIME_DELTA;
       await magnet.deposit(magnetId, amount, mockERC20.address);
   
