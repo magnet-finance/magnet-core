@@ -80,7 +80,7 @@ contract Magnet {
     mapping (address => mapping (address => bool)) public isAdmin;
 
     /// @notice An event thats emitted when a new Funder is registered
-    event FunderRegistered(address indexed funder, uint indexed vestingMagnetId);
+    event FunderRegistered(address indexed funder, uint indexed funderId);
     
     /// @notice An event thats emitted when a new VestingMagnet is minted
     event VestingMagnetMinted(address indexed recipient, address indexed funder, uint indexed vestingMagnetId);
