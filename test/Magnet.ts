@@ -130,9 +130,10 @@ describe('Magnet', function() {
 
       let funder = await magnet.funders(owner.address);
       expect(funder.id).to.equal(0);
-      expect(funder.name).to.equal(name);
       expect(funder.funder).to.equal(owner.address);
+      expect(funder.name).to.equal(name);
       expect(funder.description).to.equal(description);
+      expect(funder.imageUrl).to.equal(imageUrl);
       expect(await magnet.getFunderCount()).to.equal(1);
       expect(await magnet.isFunder(owner.address)).to.be.equal(true);
       expect(await magnet.getMagnetIdsByFunder(owner.address)).to.eql([]);
@@ -140,7 +141,7 @@ describe('Magnet', function() {
       expect(await magnet.isAdmin(addr1.address, owner.address)).to.be.equal(true);
     });
 
-    it('Reverts if sender is already registered as a funder', async function() {
+    it('Register reverts if sender is already registered as a funder', async function() {
       const {magnet, mockERC20, owner, addr1} = await waffle.loadFixture(fixtureBase);
       let admins = [addr1.address];
       let name = "Funder 1";
@@ -157,7 +158,7 @@ describe('Magnet', function() {
       expect(await magnet.isFunder(owner.address)).to.be.equal(false);
     });
 
-    it('Reverts if funder does not exist', async function() {
+    it('Register reverts if funder does not exist', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureBase);
       await expect(magnet.getMagnetCountByFunder(owner.address))
         .to.be.revertedWith('Funder does not exist');
@@ -166,6 +167,51 @@ describe('Magnet', function() {
       await expect(magnet.getAdminsByFunder(owner.address))
         .to.be.revertedWith('Funder does not exist');
     });
+
+    it('Update funder with valid data', async function() {
+      const {magnet, mockERC20, owner, addr1} = await waffle.loadFixture(fixtureBase);
+      let admins = [addr1.address];
+      let name = "Funder 1";
+      let description = "Description 1";
+      let imageUrl = "imageUrl 1";
+      await magnet.registerFunder(admins, name, description, imageUrl);
+      let originalFunder = await magnet.funders(owner.address);
+      let originalAdmins = await magnet.getAdminsByFunder(owner.address);
+
+      const [ , , other] = await ethers.getSigners();
+      let adminsToAppend = [other.address];
+      let updateName = "Funder updated";
+      let updateDescription = "Description updated";
+      let updateImageUrl = "imageUrl updated";
+
+      await expect(magnet.updateFunder(adminsToAppend, updateName, updateDescription, updateImageUrl))
+        .to.emit(magnet, 'FunderUpdated')
+        .withArgs(owner.address, originalFunder.id);
+
+      let updatedFunder = await magnet.funders(owner.address);
+      expect(updatedFunder.id).to.equal(originalFunder.id);
+      expect(updatedFunder.funder).to.equal(originalFunder.funder);
+      expect(updatedFunder.name).to.equal(updateName);
+      expect(updatedFunder.description).to.equal(updateDescription);
+      expect(updatedFunder.imageUrl).to.equal(updateImageUrl);
+      expect(await magnet.isFunder(owner.address)).to.be.equal(true);
+      expect(await magnet.getMagnetIdsByFunder(owner.address)).to.eql([]);
+      expect(await magnet.getAdminsByFunder(owner.address)).to.eql(originalAdmins.concat(adminsToAppend));
+      expect(await magnet.isAdmin(addr1.address, owner.address)).to.be.equal(true);
+      expect(await magnet.isAdmin(other.address, owner.address)).to.be.equal(true);
+    });
+
+    it('Update reverts if sender is not registered as a funder', async function() {
+      const {magnet, mockERC20, owner, addr1} = await waffle.loadFixture(fixtureBase);
+      let adminsToAppend = [addr1.address];
+      let name = "Funder 1";
+      let description = "Description 1";
+      let imageUrl = "imageUrl 1";
+
+      await expect(magnet.updateFunder(adminsToAppend, name, description, imageUrl))
+        .to.be.revertedWith('Must register as funder first');    
+    });
+
   });
 
   describe('VestingMagnet', function() {

@@ -14,9 +14,6 @@ contract Magnet {
         using SafeERC20 for IERC20;
         using SafeMath for uint;
     
-    /// @dev Contract design follows the one-to-many model with one Funder related to many VestingMagnets
-    /// https://medium.com/robhitchens/enforcing-referential-integrity-in-ethereum-smart-contracts-a9ab1427ff42
-    
     /// @notice Record details for a Funder. 
     /// @dev This could be a DAO multisig, an individual, or an organization.
     /// @notice id - Internal ID of the funder
@@ -72,15 +69,14 @@ contract Magnet {
     /// @notice List of all VestingMagnets owned by a given address
     mapping (address => uint[]) public recipientToVestingMagnetIds;
 
-    /// @notice adminFunders[admin] returns list of all Funders for whom admin is admin.
-    mapping (address => address[]) public adminFunders;
-    /// TODO: don't think I need the above mapping
-
     /// @notice isAdmin[admin][funder] = true if admin is an admin for this funder.
     mapping (address => mapping (address => bool)) public isAdmin;
 
     /// @notice An event thats emitted when a new Funder is registered
     event FunderRegistered(address indexed funder, uint indexed funderId);
+
+    /// @notice An event thats emitted when a Funder record is updated
+    event FunderUpdated(address indexed funder, uint indexed funderId);
     
     /// @notice An event thats emitted when a new VestingMagnet is minted
     event VestingMagnetMinted(address indexed recipient, address indexed funder, uint indexed vestingMagnetId);
@@ -94,14 +90,8 @@ contract Magnet {
 
     // TODO: event FunderDeleted  (remember to only allow if zero magnets)
     // TODO: event VestingMagnetTerminated
-
-    // TODO: event FunderUpdated
     // TODO: event MagnetUpdated
     
-    // TODO: think about event logging
-    // getPastEvents({ filter: funderId }) + fancy javascript math to calculate historicals
-    // getPastEvents({ filter: funderId }) + to get most recent transactions - might need additional lookup to get all data about each tx
-
     modifier magnetExists(uint _id) {
         require(_id < nextVestingMagnetId, 'Magnet does not exist');
         _;
@@ -138,7 +128,6 @@ contract Magnet {
         fundersList.push(msg.sender);
         Funder storage f = funders[msg.sender];
         f.id = fundersList.length - 1;
-        // f.magnetIds is already init to an empty array.
         f.funder = msg.sender;
         f.admins = _admins;
         f.name = _name;
@@ -146,13 +135,33 @@ contract Magnet {
         f.imageUrl = _imageUrl;
         
         for (uint i = 0; i < _admins.length; i++) {
-            // TODO: does funder need to be in admin? is funder allowed to be admin?
-            adminFunders[_admins[i]].push(msg.sender);
             isAdmin[_admins[i]][msg.sender] = true;
         }
 
         emit FunderRegistered(msg.sender, fundersList.length - 1);
         return fundersList.length - 1;
+    }
+
+    /// @notice Update record details of an existing Funder
+    function updateFunder(
+        address[] calldata _adminsToAppend,
+        string calldata _name,
+        string calldata _description,
+        string calldata _imageUrl)
+    external {
+        require(isFunder(msg.sender), "Must register as funder first");
+        
+        Funder storage f = funders[msg.sender];
+        f.name = _name;
+        f.description = _description;
+        f.imageUrl = _imageUrl;
+        
+        for (uint i = 0; i < _adminsToAppend.length; i++) {
+            isAdmin[_adminsToAppend[i]][msg.sender] = true;
+            f.admins.push(_adminsToAppend[i]);
+        }
+
+        emit FunderUpdated(msg.sender, f.id);
     }
 
     /// @notice Mint a new VestingMagnet with 0 balance.
@@ -328,19 +337,11 @@ contract Magnet {
       return funders[_funder].admins;
     }
     
-    /// @notice Get all Funders for this _admin is admin
-    function getFundersByAdmin(address _admin) public view returns (address[] memory) {
-        return adminFunders[_admin];
-    }
-
     /// @notice returns the minimum of a or b
     function min(uint a, uint b) internal pure returns (uint) {
 		return a < b ? a : b;
 	}
 
-    // TODO: setters to update Funder metadata (name, image, admins, etc).
-    // require onlyFunder. can Admins perform edits?
-    
     // TODO: setters to update Magnet metadata
     // require onlyFunder or onlyAdmin
     // be cautious how does this affect balances and vesting?
