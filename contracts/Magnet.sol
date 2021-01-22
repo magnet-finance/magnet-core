@@ -32,7 +32,7 @@ contract Magnet {
 
     /// @notice The Funder record corresponding to each address.
     mapping (address => Funder) public funders;
-    
+
     /// @notice List of all funders who are registered.
     address[] public fundersList;
 
@@ -176,14 +176,21 @@ contract Magnet {
         uint _endTime,
         string calldata _message)
     external returns (uint) {
-        require(isFunder(msg.sender), "Must register as funder first");
         require(_recipient != address(0), "Recipient cant be the zero address");
         require(_startTime >= block.timestamp, "Start time is in the past");
         require(_cliffTime >= _startTime, "Cliff time must be >= start time");
         require(_endTime > _startTime && _endTime >= _cliffTime, "End time must be > start time and >= cliff time");
         require(_vestingPeriodLength > 0 && _vestingPeriodLength <= _endTime.sub(_startTime), "Period length must be > 0 and <= duration");
         require(_amountPerPeriod > 0, "Amount must be >0");
-        
+
+        // if sender is not in Funder records, automatically register
+        if(!isFunder(msg.sender)) {
+            fundersList.push(msg.sender);
+            Funder storage f = funders[msg.sender];
+            f.id = fundersList.length - 1;
+            f.funder = msg.sender;
+        }
+
         vestingMagnets[nextVestingMagnetId] = VestingMagnet({
             recipient: _recipient,
             token: _token,

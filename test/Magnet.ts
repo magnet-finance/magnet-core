@@ -215,7 +215,7 @@ describe('Magnet', function() {
   });
 
   describe('VestingMagnet', function() {
-    it('Revert Mint if sender has not registered as funder', async function() {
+    it('Mint a VestingMagnet as un-registered funder with valid data', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureBase);
       let recipient = addr1.address;
       let token = mockERC20.address;
@@ -227,11 +227,42 @@ describe('Magnet', function() {
       let endTime = now + END_TIME_DELTA;
       let message = "Message 1";
 
+      let expectedId = await magnet.getMagnetCount();
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
-        .to.be.revertedWith('Must register as funder first');
+        .to.emit(magnet, 'VestingMagnetMinted')
+        .withArgs(recipient, owner.address, expectedId);
+
+      let m = await magnet.vestingMagnets(expectedId);
+      expect(m.recipient).to.equal(recipient);
+      expect(m.token).to.equal(token);
+      expect(m.funder).to.equal(owner.address);
+      expect(m.id).to.equal(expectedId);
+      expect(m.startTime).to.equal(startTime);
+      expect(m.vestingPeriodLength).to.equal(vestingPeriodLength);
+      expect(m.amountPerPeriod).to.equal(amountPerPeriod);
+      expect(m.cliffTime).to.equal(cliffTime);
+      expect(m.endTime).to.equal(endTime);
+      expect(m.message).to.equal(message);
+      expect(m.balance).to.equal(0);
+
+      let funder = await magnet.funders(owner.address);
+      expect(funder.id).to.equal(0);
+      expect(funder.funder).to.equal(owner.address);
+      expect(funder.name).to.equal("");
+      expect(funder.description).to.equal("");
+      expect(funder.imageUrl).to.equal("");
+      expect(await magnet.getFunderCount()).to.equal(1);
+      expect(await magnet.isFunder(owner.address)).to.be.equal(true);
+      expect(await magnet.getAdminsByFunder(owner.address)).to.eql([]);
+
+      expect(await magnet.getMagnetCount()).to.equal(1);
+      expect(await magnet.getMagnetCountByFunder(owner.address)).to.be.equal(1);
+      expect((await magnet.getMagnetIdsByFunder(owner.address))[0]).to.equal(0);
+      expect((await magnet.getMagnetsByRecipient(recipient))[0])
+        .to.equal(expectedId);
     });
 
-    it('Mint a VestingMagnet with valid data', async function() {
+    it('Mint a VestingMagnet as registered funder with valid data', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       let recipient = addr1.address;
       let token = mockERC20.address;
