@@ -112,15 +112,15 @@ contract Magnet {
         _;
     }
 
-    modifier onlyFunder(uint _vestingMagnetId, address _funder) {
-        require(vestingMagnets[_vestingMagnetId].funder == _funder, 'Caller is not the funder of this magnet');
+    modifier onlyFunder(uint _vestingMagnetId) {
+        require(msg.sender == vestingMagnets[_vestingMagnetId].funder, 'Caller is not the funder of this magnet');
         _;
     }
 
-    modifier onlyFunderOrRecipient(uint _vestingMagnetId, address _who) {
+    modifier onlyFunderOrRecipient(uint _vestingMagnetId) {
         VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
         require(
-            _who == vestingMagnets[_vestingMagnetId].funder || _who == vestingMagnets[_vestingMagnetId].recipient,
+            msg.sender == magnet.funder || msg.sender == magnet.recipient,
             'Caller is not the funder or recipient of this magnet'
         );
         _;
@@ -199,7 +199,7 @@ contract Magnet {
 
     /// @notice Deposit to a VestingMagnet
     function deposit(uint _vestingMagnetId, uint _amount, address _tokenId)
-        public magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId, msg.sender)
+        public magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId)
     {
         require(_amount > 0, "Deposit must be greater than zero");
         VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
@@ -221,7 +221,7 @@ contract Magnet {
 
     /// @notice Withdraw funds from a VestingMagnet
     function withdraw(uint _vestingMagnetId, uint _amount)
-        public magnetExists(_vestingMagnetId) onlyFunderOrRecipient(_vestingMagnetId, msg.sender)
+        public magnetExists(_vestingMagnetId) onlyFunderOrRecipient(_vestingMagnetId)
     {        
         uint available = getAvailableBalance(_vestingMagnetId, msg.sender);
         _amount = min(_amount, available);
