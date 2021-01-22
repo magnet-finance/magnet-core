@@ -406,7 +406,7 @@ describe('Magnet', function() {
 
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
         .to.emit(magnet, 'Deposited')
-        .withArgs(owner.address, magnetId, amount);
+        .withArgs(owner.address, magnetId, mockERC20.address, amount);
       
       // Waffle's calledOnContractWith is not currently supported by Hardhat. (1/5/2021)
       // expect("transferFrom").to.be.calledOnContractWith(mockERC20, [expectedSender, expectedRecipient, amount]);
@@ -459,7 +459,7 @@ describe('Magnet', function() {
 
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
         .to.emit(magnet, 'Deposited')
-        .withArgs(owner.address, magnetId, totalLifetimeValue);
+        .withArgs(owner.address, magnetId, mockERC20.address, totalLifetimeValue);
       expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(totalLifetimeValue);
     });
 
@@ -471,13 +471,13 @@ describe('Magnet', function() {
       let amount1 = totalLifetimeValue / 2;
       await expect(magnet.deposit(magnetId, amount1, mockERC20.address))
         .to.emit(magnet, 'Deposited')
-        .withArgs(owner.address, magnetId, amount1);
+        .withArgs(owner.address, magnetId, mockERC20.address, amount1);
       expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(amount1);
 
       let amount2 = totalLifetimeValue;
       await expect(magnet.deposit(magnetId, amount2, mockERC20.address))
         .to.emit(magnet, 'Deposited')
-        .withArgs(owner.address, magnetId, totalLifetimeValue - amount1);
+        .withArgs(owner.address, magnetId, mockERC20.address, totalLifetimeValue - amount1);
       expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(totalLifetimeValue);
     });
   });

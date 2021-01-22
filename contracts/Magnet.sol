@@ -32,6 +32,7 @@ contract Magnet {
 
     /// @notice The Funder record corresponding to each address.
     mapping (address => Funder) public funders;
+    
     /// @notice List of all funders who are registered.
     address[] public fundersList;
 
@@ -82,8 +83,7 @@ contract Magnet {
     event VestingMagnetMinted(address indexed recipient, address indexed funder, uint indexed vestingMagnetId);
 
     /// @notice An event thats emitted when funds are deposited into the contract
-    event Deposited(address indexed from, uint indexed vestingMagnetId, uint amount);
-    // TODO: emit token address too, not indexed. update unit test.
+    event Deposited(address indexed from, uint indexed vestingMagnetId, address token, uint amount);
 
     /// @notice An event thats emitted when funds are withdrawn from the contract
     event Withdrawn(address indexed to, uint indexed vestingMagnetId, address token, uint amount);
@@ -206,23 +206,26 @@ contract Magnet {
         return nextVestingMagnetId-1;
     }
 
+    // TODO: updateMagnet metadata. require onlyFunder or onlyAdmin
+    // be cautious how does this affect balances and vesting?
+
     /// @notice Deposit to a VestingMagnet
-    function deposit(uint _vestingMagnetId, uint _amount, address _tokenId)
+    function deposit(uint _vestingMagnetId, uint _amount, address _token)
         public magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId)
     {
         require(_amount > 0, "Deposit must be greater than zero");
         VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
-        require(magnet.token == _tokenId, "Deposit token address does not match magnet token");
+        require(magnet.token == _token, "Deposit token address does not match magnet token");
         uint amountToFullyFundMagnet = (getLifetimeValue(_vestingMagnetId).sub(magnet.balance)).sub(magnet.amountWithdrawn);
         _amount = min(_amount, amountToFullyFundMagnet);
         magnet.balance = magnet.balance.add(_amount);
 
-        IERC20(_tokenId).safeTransferFrom(msg.sender, address(this), _amount);
-        emit Deposited(msg.sender, _vestingMagnetId, _amount);
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+        emit Deposited(msg.sender, _vestingMagnetId, _token, _amount);
     }
 
     /// @notice Deposit funds to multiple VestingMagnets in a single transaction
-    function depositMany(uint[] calldata _vestingMagnetIds, uint[] calldata _amounts, address[] calldata _tokenIds) external {
+    function depositMany(uint[] calldata _vestingMagnetIds, uint[] calldata _amounts, address[] calldata _tokens) external {
         // TODO
         // require all three arrays are the same length
         // for each entry...
@@ -244,52 +247,6 @@ contract Magnet {
 
         IERC20(magnet.token).safeTransfer(msg.sender, _amount);
         emit Withdrawn(msg.sender, _vestingMagnetId, magnet.token, _amount);
-    }
-
-    /// @notice returns the amount available for withdrawal by _who
-    /// @param _vestingMagnetId The ID of the VestingMagnet to withdraw from
-    /// @param _who The address for which to query the balance
-    function getAvailableBalance(uint _vestingMagnetId, address _who) public view magnetExists(_vestingMagnetId) returns (uint) {
-        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
-        uint amountVestedToRecipient = min(getVestedAmountOwed(_vestingMagnetId), magnet.balance);
-        if (_who == magnet.recipient) return amountVestedToRecipient;
-        if (_who == magnet.funder) return magnet.balance.sub(amountVestedToRecipient);
-        return 0;
-    }
-
-    /// @notice returns the amount that is fully vested to the user and not yet withdrawn
-    /// @dev if recipient has never withdrawn from the VestingMagnet, this is equivalent to getVestedAmount
-    function getVestedAmountOwed(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
-        uint amountWithdrawn = vestingMagnets[_vestingMagnetId].amountWithdrawn;
-        uint vestedAmount = getVestedAmount(_vestingMagnetId);
-        return vestedAmount.sub(amountWithdrawn);
-    }
-
-    /// @notice returns the amount that has vested to recipient since startTime
-    /// @dev after cliffTime, this is equivalent to getVestedAmountIgnoringCliff
-    function getVestedAmount(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
-        if (block.timestamp < vestingMagnets[_vestingMagnetId].cliffTime) {
-            return 0;
-        }
-        return getVestedAmountIgnoringCliff(_vestingMagnetId);
-    }
-
-    /// @notice returns the progress made toward vesting since startTime, if the cliff is ignored
-    function getVestedAmountIgnoringCliff(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
-        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
-        if (block.timestamp <= magnet.startTime) return 0;
-        uint time = min(block.timestamp, magnet.endTime);
-        uint timeElapsed = time.sub(magnet.startTime);
-        uint numPeriodsElapsed = timeElapsed.div(magnet.vestingPeriodLength);
-        return numPeriodsElapsed.mul(magnet.amountPerPeriod);
-    }
-
-    /// @notice returns the lifetime value of a VestingMagnet
-    function getLifetimeValue(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
-        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
-        uint duration = magnet.endTime.sub(magnet.startTime);
-        uint numPeriods = duration.div(magnet.vestingPeriodLength);
-        return numPeriods.mul(magnet.amountPerPeriod);
     }
 
     /// @notice Withdraw funds from N vesting magnets
@@ -342,7 +299,49 @@ contract Magnet {
 		return a < b ? a : b;
 	}
 
-    // TODO: setters to update Magnet metadata
-    // require onlyFunder or onlyAdmin
-    // be cautious how does this affect balances and vesting?
+    /// @notice returns the amount available for withdrawal by _who
+    /// @param _vestingMagnetId The ID of the VestingMagnet to withdraw from
+    /// @param _who The address for which to query the balance
+    function getAvailableBalance(uint _vestingMagnetId, address _who) public view magnetExists(_vestingMagnetId) returns (uint) {
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        uint amountVestedToRecipient = min(getVestedAmountOwed(_vestingMagnetId), magnet.balance);
+        if (_who == magnet.recipient) return amountVestedToRecipient;
+        if (_who == magnet.funder) return magnet.balance.sub(amountVestedToRecipient);
+        return 0;
+    }
+
+    /// @notice returns the amount that is fully vested to the user and not yet withdrawn
+    /// @dev if recipient has never withdrawn from the VestingMagnet, this is equivalent to getVestedAmount
+    function getVestedAmountOwed(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
+        uint amountWithdrawn = vestingMagnets[_vestingMagnetId].amountWithdrawn;
+        uint vestedAmount = getVestedAmount(_vestingMagnetId);
+        return vestedAmount.sub(amountWithdrawn);
+    }
+
+    /// @notice returns the amount that has vested to recipient since startTime
+    /// @dev after cliffTime, this is equivalent to getVestedAmountIgnoringCliff
+    function getVestedAmount(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
+        if (block.timestamp < vestingMagnets[_vestingMagnetId].cliffTime) {
+            return 0;
+        }
+        return getVestedAmountIgnoringCliff(_vestingMagnetId);
+    }
+
+    /// @notice returns the progress made toward vesting since startTime, if the cliff is ignored
+    function getVestedAmountIgnoringCliff(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        if (block.timestamp <= magnet.startTime) return 0;
+        uint time = min(block.timestamp, magnet.endTime);
+        uint timeElapsed = time.sub(magnet.startTime);
+        uint numPeriodsElapsed = timeElapsed.div(magnet.vestingPeriodLength);
+        return numPeriodsElapsed.mul(magnet.amountPerPeriod);
+    }
+
+    /// @notice returns the lifetime value of a VestingMagnet
+    function getLifetimeValue(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        uint duration = magnet.endTime.sub(magnet.startTime);
+        uint numPeriods = duration.div(magnet.vestingPeriodLength);
+        return numPeriods.mul(magnet.amountPerPeriod);
+    }
 }
