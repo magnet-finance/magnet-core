@@ -11,8 +11,13 @@ use(solidity);
 
 const zero_address = utils.getAddress('0x0000000000000000000000000000000000000000');
 const START_TIME_DELTA = 20;
-const CLIFF_TIME_DELTA = 864020; // 10 days after start time
-const END_TIME_DELTA = 3456020; // 40 days after start time
+const CLIFF_TIME_DELTA = 864000 + START_TIME_DELTA; // 10 days after start time
+const END_TIME_DELTA = 3456000 + START_TIME_DELTA; // 40 days after start time
+
+const LONG_START_TIME_DELTA = 120;
+const LONG_CLIFF_TIME_DELTA = 864000 + LONG_START_TIME_DELTA; // 10 days after start time
+const LONG_END_TIME_DELTA = 3456000 + LONG_START_TIME_DELTA; // 40 days after start time
+
 
 function getTimeInSeconds() {
   return Math.floor(new Date().getTime() / 1000)
@@ -68,7 +73,7 @@ describe('Magnet', function() {
     return {magnet, mockERC20, owner, addr1};
   }
 
-  async function fixtureOneFunderAndMagnet() {
+  async function fixtureOneMagnetOneFunder() {
     const [owner, addr1] = await ethers.getSigners();
     const Magnet = await ethers.getContractFactory("Magnet") as Magnet__factory;
     const magnet = await Magnet.deploy() as Magnet;
@@ -97,6 +102,57 @@ describe('Magnet', function() {
     await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
 
     return {magnet, mockERC20, owner, addr1};
+  }
+
+  async function fixtureManyMagnetOneFunder() {
+    const addrs = await ethers.getSigners();
+    const owner = addrs[0];
+    const Magnet = await ethers.getContractFactory("Magnet") as Magnet__factory;
+    const magnet = await Magnet.deploy() as Magnet;
+    await magnet.deployed();
+    
+    // initialize many different mockERC20 tokens
+    const tokens = [];
+    let numTokens = 3;
+    var i;
+    for (i = 0; i < numTokens; i++) {
+      tokens[i] = await deployMockContract(owner, IERC20.abi);
+      await tokens[i].mock.transfer.returns(true);
+      await tokens[i].mock.transferFrom.returns(true);
+    }
+
+    let admins = [];
+    let name = "Funder 1";
+    let description = "Description 1";
+    let imageUrl = "imageUrl 1";
+    await magnet.registerFunder(admins, name, description, imageUrl);
+
+    // mint one magnet for every recipient:token pair, excluding owner
+    let magnetIds = [];
+    let magnetRecipients = [];
+    let magnetTokens = [];
+    let numRecipients = 10;
+    var rec, tok, id = 0;
+    for (rec = 1; rec < numRecipients+1; rec++) {
+      let recipient = addrs[rec].address;
+      for (tok = 0; tok < numTokens; tok++) {
+        let token = tokens[tok].address;
+        let now = getTimeInSeconds();
+        let startTime = now + LONG_START_TIME_DELTA;
+        let vestingPeriodLength = 1;
+        let amountPerPeriod = 1;
+        let cliffTime = now + LONG_CLIFF_TIME_DELTA;
+        let endTime = now + LONG_END_TIME_DELTA;
+        let message = "Message" + rec + tok;
+        await magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message);
+        magnetIds.push(id);
+        id++;
+        magnetRecipients.push(recipient);
+        magnetTokens.push(token);
+      }
+    }
+
+    return {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens};
   }
 
   describe('Deploy', function() {
@@ -299,6 +355,27 @@ describe('Magnet', function() {
         .to.equal(expectedId);
     });
 
+    it('Mint increments nextVestingMagnetId correctly', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = now + START_TIME_DELTA;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+
+      let expectedId = 0;
+      for (expectedId = 0; expectedId < 5; expectedId++) {
+        await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+          .to.emit(magnet, 'VestingMagnetMinted')
+          .withArgs(recipient, owner.address, expectedId);
+        expect((await magnet.vestingMagnets(expectedId)).id).to.equal(expectedId);
+      }
+    });
+
     it('Revert if recipient is zero address', async function() {
       const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
       let recipient = zero_address;
@@ -427,7 +504,7 @@ describe('Magnet', function() {
   describe('Deposit', function() {
     it('Deposit to a VestingMagnet with valid data', async function() {
       this.timeout(4000);
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneMagnetOneFunder);
       let expectedSender = owner.address;
       let expectedRecipient = magnet.address;
       let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
@@ -446,7 +523,7 @@ describe('Magnet', function() {
     });
 
     it('Should revert if magnet does not exist', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneMagnetOneFunder);
       let magnetId = (await magnet.nextVestingMagnetId()).add(1);
       let amount = 0;
 
@@ -455,16 +532,16 @@ describe('Magnet', function() {
     });
 
     it('Should revert if depositing 0', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneMagnetOneFunder);
       let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = 0;
 
       await expect(magnet.deposit(magnetId, amount, mockERC20.address))
-        .to.be.revertedWith('Deposit must be greater than zero');
+        .to.be.revertedWith('Deposit amount is zero or magnet is already funded to lifetime value');
     });
 
     it('Should revert if depositing a different token', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneMagnetOneFunder);
       let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = 1000;
       let wrongToken = await deployMockContract(owner, IERC20.abi);
@@ -474,7 +551,7 @@ describe('Magnet', function() {
     });
 
     it('Should revert if non-funder tries to deposit', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneMagnetOneFunder);
       let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = 1000;
 
@@ -483,7 +560,7 @@ describe('Magnet', function() {
     });
 
     it('Should only allow deposits up to total lifetime value of a finite VestingMagnet', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneMagnetOneFunder);
       let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let amount = ethers.constants.MaxUint256;
       let totalLifetimeValue = END_TIME_DELTA - START_TIME_DELTA;
@@ -495,7 +572,7 @@ describe('Magnet', function() {
     });
 
     it('Should only top up to the total lifetime value of a finite VestingMagnet', async function() {
-      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneFunderAndMagnet);
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureOneMagnetOneFunder);
       let magnetId = (await magnet.nextVestingMagnetId()).sub(1);
       let totalLifetimeValue = END_TIME_DELTA - START_TIME_DELTA;
 
@@ -511,6 +588,190 @@ describe('Magnet', function() {
         .withArgs(owner.address, magnetId, mockERC20.address, totalLifetimeValue - amount1);
       expect((await magnet.vestingMagnets(magnetId)).balance).to.equal(totalLifetimeValue);
     });
+  });
+
+  describe('Deposit Many', function() {
+    it('Many magnets fixture works', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+      const owner = addrs[0];
+
+      let numMagnets = await magnet.getMagnetCount();
+      expect(numMagnets).to.equal(magnetRecipients.length);
+      expect(await magnet.getMagnetCountByFunder(owner.address)).to.be.equal(numMagnets);
+
+      let id;
+      for (id in magnetIds) {
+        let m = await magnet.vestingMagnets(id);
+        expect(m.id).to.equal(id);
+        expect(m.recipient).to.equal(magnetRecipients[id]);
+        expect(m.token).to.equal(magnetTokens[id]);
+        expect(m.funder).to.equal(owner.address);
+        expect(m.balance).to.equal(0);
+      }
+    });
+
+    it('Should depositMany with valid data: 3 tokens, 10 recipients', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+      const owner = addrs[0];
+
+      let amountToDeposit = 1000;
+      let amountsToDeposit = Array(magnetIds.length).fill(amountToDeposit);
+      let startingBalance = 0;
+      let expectedBalance = startingBalance + amountToDeposit;
+      let pendingEvents = expect(magnet.depositMany(magnetIds, amountsToDeposit, magnetTokens))
+        .to.emit(magnet, 'Deposited');
+      
+      let i;
+      for (i = 0; i < magnetIds.length; i++) {
+        await pendingEvents.withArgs(owner.address, magnetIds[i], magnetTokens[i], amountsToDeposit[i]);
+        expect((await magnet.vestingMagnets(i)).balance).to.equal(expectedBalance);
+      }
+    });
+
+    it('Should depositMany with valid data: 1 token, 10 recipients', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+      const owner = addrs[0];
+
+      // deposit only to magnets denominated in this token
+      let targetToken = magnetTokens[0];
+      let magnetIdsToDeposit = [];
+      let amountsToDeposit = [];
+      let tokensToDeposit = [];
+      let amountToDeposit = 1000;
+      let startingBalance = 0;
+      let expectedBalance = startingBalance + amountToDeposit;
+
+      let i;
+      for (i = 0; i < magnetIds.length; i++) {
+        if (magnetTokens[i] === targetToken) {
+          magnetIdsToDeposit.push(magnetIds[i]);
+          amountsToDeposit.push(amountToDeposit);
+          tokensToDeposit.push(targetToken);
+        }
+      }
+
+      let pendingEvents = expect(magnet.depositMany(magnetIdsToDeposit, amountsToDeposit, tokensToDeposit))
+        .to.emit(magnet, 'Deposited');
+      
+      for (i = 0; i < magnetIdsToDeposit.length; i++) {
+        await pendingEvents.withArgs(owner.address, magnetIdsToDeposit[i], tokensToDeposit[i], amountsToDeposit[i]);
+        expect((await magnet.vestingMagnets(magnetIdsToDeposit[i])).balance).to.equal(expectedBalance);
+      }
+    });
+
+    it('Should only allow deposits up to total lifetime value of a finite VestingMagnet', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+      const owner = addrs[0];
+
+      let amountToDeposit = 1000;
+      let amountsToDeposit = Array(magnetIds.length).fill(amountToDeposit);
+      let totalLifetimeValue = LONG_END_TIME_DELTA - LONG_START_TIME_DELTA;
+      let magnetIdToMaxOut = magnetIds.length / 2;
+      amountsToDeposit[magnetIdToMaxOut] = ethers.constants.MaxUint256;
+
+      let startingBalance = 0;
+      let expectedBalance = startingBalance + amountToDeposit;
+      let pendingEvents = expect(magnet.depositMany(magnetIds, amountsToDeposit, magnetTokens))
+        .to.emit(magnet, 'Deposited');
+      
+      let i;
+      for (i = 0; i < magnetIds.length; i++) {
+        if (magnetIds[i] == magnetIdToMaxOut) {
+          await pendingEvents.withArgs(owner.address, magnetIds[i], magnetTokens[i], totalLifetimeValue);
+          expect((await magnet.vestingMagnets(i)).balance).to.equal(totalLifetimeValue);  
+        } else {
+          await pendingEvents.withArgs(owner.address, magnetIds[i], magnetTokens[i], amountsToDeposit[i]);
+          expect((await magnet.vestingMagnets(i)).balance).to.equal(expectedBalance);  
+        }
+      }
+    });
+
+    it('Should revert if any amount is 0', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+
+      let amountToDeposit = 1000;
+      let amountsToDeposit = Array(magnetIds.length).fill(amountToDeposit);
+      let magnetIdToZeroOut = magnetIds.length / 2;
+      amountsToDeposit[magnetIdToZeroOut] = 0;
+      
+      await expect(magnet.depositMany(magnetIds, amountsToDeposit, magnetTokens))
+        .to.be.revertedWith('Deposit amount is zero or magnet is already funded to lifetime value');
+    });
+
+    it('Should revert when array lengths do not match', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+
+      let amountToDeposit = 1000;
+      let amountsToDeposit = Array(magnetIds.length).fill(amountToDeposit);
+
+      let shortMagnetIds = magnetIds.slice(0, magnetIds.length - 1);
+      await expect(magnet.depositMany(shortMagnetIds, amountsToDeposit, magnetTokens))
+        .to.be.revertedWith('Input arrays must be same length');
+
+      let shortAmounts = Array(magnetIds.length - 1).fill(amountToDeposit);
+      await expect(magnet.depositMany(magnetIds, shortAmounts, magnetTokens))
+        .to.be.revertedWith('Input arrays must be same length');
+
+      let shortTokens = magnetTokens.slice(0, magnetTokens.length - 1);
+      await expect(magnet.depositMany(magnetIds, amountsToDeposit, shortTokens))
+        .to.be.revertedWith('Input arrays must be same length');
+  
+      await expect(magnet.depositMany(shortMagnetIds, shortAmounts, magnetTokens))
+        .to.be.revertedWith('Input arrays must be same length');
+
+      await expect(magnet.depositMany(magnetIds, shortAmounts, shortTokens))
+        .to.be.revertedWith('Input arrays must be same length');
+    });
+
+    it('Should revert when array lengths are zero', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+
+      let amountToDeposit = 1000;
+      let amountsToDeposit = Array(magnetIds.length).fill(amountToDeposit);
+
+      await expect(magnet.depositMany([], amountsToDeposit, magnetTokens))
+        .to.be.revertedWith('Input arrays must be same length');
+
+      await expect(magnet.depositMany(magnetIds, [], magnetTokens))
+        .to.be.revertedWith('Input arrays must be same length');
+
+      await expect(magnet.depositMany(magnetIds, amountsToDeposit, []))
+        .to.be.revertedWith('Input arrays must be same length');
+  
+      await expect(magnet.depositMany([], [], magnetTokens))
+        .to.be.revertedWith('Input arrays must be same length');
+
+      await expect(magnet.depositMany(magnetIds, [], []))
+        .to.be.revertedWith('Input arrays must be same length');
+
+      await expect(magnet.depositMany([], [], []))
+        .to.not.emit(magnet, 'Deposited'); // intended to not revert
+    });
+
+    it('Should revert if any token does not match magnet', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+      const owner = addrs[0];
+
+      let amountToDeposit = 1000;
+      let amountsToDeposit = Array(magnetIds.length).fill(amountToDeposit);
+
+      let wrongToken = await deployMockContract(owner, IERC20.abi);
+      magnetTokens[magnetTokens.length/2] = wrongToken.address;
+
+      await expect(magnet.depositMany(magnetIds, amountsToDeposit, magnetTokens))
+        .to.be.revertedWith('Deposit token address does not match magnet token');
+    });
+
+    it('Should revert if non-funder tries to depositMany', async function() {
+      const {magnet, tokens, addrs, magnetIds, magnetRecipients, magnetTokens} = await loadFixture(fixtureManyMagnetOneFunder);
+      let amountToDeposit = 1000;
+      let amountsToDeposit = Array(magnetIds.length).fill(amountToDeposit);
+
+      await expect(magnet.connect(addrs[1]).depositMany(magnetIds, amountsToDeposit, magnetTokens))
+        .to.be.revertedWith('Caller is not the funder of this magnet');
+    });
+
+    // TODO: add tests and gas analysis for depositManyDifferentTokens
   });
 
   describe('Get Balances', function() {

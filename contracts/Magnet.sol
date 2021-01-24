@@ -195,7 +195,7 @@ contract Magnet {
             recipient: _recipient,
             token: _token,
             funder: msg.sender,
-            id: funders[msg.sender].id,
+            id: nextVestingMagnetId,
             startTime: _startTime,
             vestingPeriodLength: _vestingPeriodLength,
             amountPerPeriod: _amountPerPeriod,
@@ -218,25 +218,71 @@ contract Magnet {
 
     /// @notice Deposit to a VestingMagnet
     function deposit(uint _vestingMagnetId, uint _amount, address _token)
-        public magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId)
+        external
     {
-        require(_amount > 0, "Deposit must be greater than zero");
-        VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
-        require(magnet.token == _token, "Deposit token address does not match magnet token");
-        uint amountToFullyFundMagnet = (getLifetimeValue(_vestingMagnetId).sub(magnet.balance)).sub(magnet.amountWithdrawn);
-        _amount = min(_amount, amountToFullyFundMagnet);
-        magnet.balance = magnet.balance.add(_amount);
-
+        _amount = depositToBalance(_vestingMagnetId, _amount, _token);
         IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         emit Deposited(msg.sender, _vestingMagnetId, _token, _amount);
     }
 
-    /// @notice Deposit funds to multiple VestingMagnets in a single transaction
-    function depositMany(uint[] calldata _vestingMagnetIds, uint[] calldata _amounts, address[] calldata _tokens) external {
-        // TODO
-        // require all three arrays are the same length
-        // for each entry...
+    /// @notice Internal function to update VestingMagnet.balance
+    function depositToBalance(uint _vestingMagnetId, uint _amount, address _token)
+        private magnetExists(_vestingMagnetId) onlyFunder(_vestingMagnetId) returns (uint)
+    {
+        VestingMagnet storage magnet = vestingMagnets[_vestingMagnetId];
+        require(magnet.token == _token, "Deposit token address does not match magnet token");
+        _amount = min(_amount, getAmountToFullyFund(_vestingMagnetId));
+        require(_amount > 0, "Deposit amount is zero or magnet is already funded to lifetime value");
+        magnet.balance = magnet.balance.add(_amount);
+        return _amount;
     }
+
+    /// @notice Deposit funds to multiple VestingMagnets in a single transaction
+    /// @dev If the number of distinct tokens << number of deposits, this is more gas efficient than 'depositManyDifferentTokens'
+    /// @dev Deposits of the same token are batched so ERC20 transferFrom is called once for each token address
+    /// @dev Gas limit warning! This function iterates over the array parameters so may run out of gas.
+    function depositMany(uint[] calldata _vestingMagnetIds, uint[] memory _amounts, address[] memory _tokens)
+        external 
+    {
+        require(_vestingMagnetIds.length == _amounts.length && _amounts.length == _tokens.length, "Input arrays must be same length");
+        uint endOfBatch = 0; // point to the end of batched data in _amounts and _tokens
+
+        for (uint i = 0; i < _tokens.length; i++) {
+            uint amountToDeposit = depositToBalance(_vestingMagnetIds[i], _amounts[i], _tokens[i]);
+            uint batchId = indexOf(_tokens, endOfBatch, _tokens[i]);
+            if (batchId < endOfBatch) {
+                // token is already in the batch
+                _amounts[batchId] = _amounts[batchId].add(amountToDeposit);
+            } else {
+                // token is not yet in the batch
+                _tokens[endOfBatch] = _tokens[i];
+                _amounts[endOfBatch] = amountToDeposit;
+                endOfBatch++;
+            }
+            emit Deposited(msg.sender, _vestingMagnetIds[i], _tokens[i], amountToDeposit);
+        }
+
+        for (uint i = 0; i < endOfBatch; i++) {
+            IERC20(_tokens[i]).safeTransferFrom(msg.sender, address(this), _amounts[i]);
+        }
+    }
+
+    /* TODO: analyze gas efficiency and write unit tests
+    /// @notice Deposit funds to multiple VestingMagnets in a single transaction
+    /// @dev If the number of distinct tokens ~= number of deposits, this is more gas efficient than 'depositMany'
+    /// @dev One ERC20 transferFrom call for each token address
+    /// @dev Gas limit warning! This function iterates over the array parameters so may run out of gas.
+    function depositManyDifferentTokens(uint[] calldata _vestingMagnetIds, uint[] calldata _amounts, address[] calldata _tokens)
+        external 
+    {
+        require(_vestingMagnetIds.length == _amounts.length && _amounts.length == _tokens.length, "Input arrays must be same length");
+        for (uint i = 0; i < _tokens.length; i++) {
+            uint amountToDeposit = depositToBalance(_vestingMagnetIds[i], _amounts[i], _tokens[i]);
+            IERC20(_tokens[i]).safeTransferFrom(msg.sender, address(this), amountToDeposit);
+            emit Deposited(msg.sender, _vestingMagnetIds[i], _tokens[i], amountToDeposit);
+        }
+    }
+    */
 
     /// @notice Withdraw funds from a VestingMagnet
     function withdraw(uint _vestingMagnetId, uint _amount)
@@ -301,11 +347,6 @@ contract Magnet {
       return funders[_funder].admins;
     }
     
-    /// @notice returns the minimum of a or b
-    function min(uint a, uint b) internal pure returns (uint) {
-		return a < b ? a : b;
-	}
-
     /// @notice returns the amount available for withdrawal by _who
     /// @param _vestingMagnetId The ID of the VestingMagnet to withdraw from
     /// @param _who The address for which to query the balance
@@ -350,5 +391,26 @@ contract Magnet {
         uint duration = magnet.endTime.sub(magnet.startTime);
         uint numPeriods = duration.div(magnet.vestingPeriodLength);
         return numPeriods.mul(magnet.amountPerPeriod);
+    }
+
+    /// @notice returns the maximum allowed deposit amount
+    function getAmountToFullyFund(uint _vestingMagnetId) public view magnetExists(_vestingMagnetId) returns (uint) {
+        VestingMagnet memory magnet = vestingMagnets[_vestingMagnetId];
+        return getLifetimeValue(_vestingMagnetId).sub(magnet.balance).sub(magnet.amountWithdrawn);
+    }
+
+    /// @notice returns the minimum of a or b
+    function min(uint a, uint b) internal pure returns (uint) {
+		return a < b ? a : b;
+	}
+
+    /// @notice Find index of an address in an address array
+    /// @param stopAt the index of the array to stop iteration
+    /// @dev Assumes no duplicate entries in the array
+    function indexOf(address[] memory _arr, uint stopAt, address _key) internal pure returns (uint) {
+        for (uint i = 0; i < stopAt; i++) {
+            if (_arr[i] == _key) return i;
+        }
+        return stopAt + 1;
     }
 }

@@ -1,5 +1,6 @@
 import { task } from "hardhat/config";
 import "@nomiclabs/hardhat-waffle";
+import "chai";
 import "hardhat-typechain";
 
 // Learn how to write a custom Hardhat task at
