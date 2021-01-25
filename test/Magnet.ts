@@ -1,6 +1,6 @@
 import { ethers, waffle } from 'hardhat';
 import { assert, expect, use } from 'chai';
-import { utils } from 'ethers';
+import { BigNumber, utils } from 'ethers';
 
 import { Magnet } from "../build/typechain/Magnet";
 import { Magnet__factory } from "../build/typechain/factories/Magnet__factory";
@@ -24,19 +24,21 @@ function getTimeInSeconds() {
 }
 
 /// @notice helper function to fast forward the EVM
-function fastForwardEvmBy(seconds) {
+function fastForwardEvmBy(seconds: number) {
   ethers.provider.send("evm_increaseTime", [seconds]);
   ethers.provider.send("evm_mine", []);
 }
 
-function duration(startTime, endTime) {
-  return endTime - startTime;
-}
-
 /// @notice helper function to calculate the vested amount, ignoring cliff
-function estimateVestedAmountIgnoringCliff(atTime, startTime, vestingPeriodLength, amountPerPeriod) {
-  if (atTime < startTime) return 0;
-  return (atTime - startTime) / vestingPeriodLength * amountPerPeriod;
+function estimateVestedAmountIgnoringCliff(atTime: number | BigNumber, startTime: number | BigNumber,
+  vestingPeriodLength: number | BigNumber, amountPerPeriod: number | BigNumber) : BigNumber
+{
+  if (typeof(atTime) == "number") atTime = BigNumber.from(atTime);
+  if (typeof(startTime) == "number") startTime = BigNumber.from(startTime);
+  if (typeof(vestingPeriodLength) == "number") vestingPeriodLength = BigNumber.from(vestingPeriodLength);
+  if (typeof(amountPerPeriod) == "number") amountPerPeriod = BigNumber.from(amountPerPeriod);
+  if (atTime.lte(startTime)) return BigNumber.from(0);
+  return ((atTime.sub(startTime)).div(vestingPeriodLength)).mul(amountPerPeriod);
 }
 
 describe('Magnet', function() {
@@ -121,7 +123,7 @@ describe('Magnet', function() {
       await tokens[i].mock.transferFrom.returns(true);
     }
 
-    let admins = [];
+    let admins: string[] = [];
     let name = "Funder 1";
     let description = "Description 1";
     let imageUrl = "imageUrl 1";
@@ -814,7 +816,7 @@ describe('Magnet', function() {
       let amountAfterEnd = await magnet.getVestedAmountIgnoringCliff(magnetId);
       // console.log("amountAfterEnd:", amountAfterEnd.toString());
       // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
-      expect(amountAfterEnd). to.equal(expectedAmountAtEnd);
+      expect(amountAfterEnd).to.equal(expectedAmountAtEnd);
     });
 
     it('Should get correct vested amount with valid input', async function() {
@@ -945,9 +947,9 @@ describe('Magnet', function() {
       // fast forward to the far future
       fastForwardEvmBy(Number.MAX_SAFE_INTEGER);
       let amountInFarFuture = await magnet.getVestedAmount(magnetId);
-      // console.log("amountBeforeEnd:", amountInFarFuture.toString());
-      // console.log("expectedAmountAtEnd", expectedAmountAtEnd);
-      expect(Number(amountInFarFuture))
+      // console.log("amountInFarFuture:", amountInFarFuture.toString());
+      // console.log("expectedAmountAtEnd", expectedAmountAtEnd.toString());
+      expect(amountInFarFuture)
         .to.be.above(expectedAmountAtCliff)
         .to.be.below(expectedAmountAtEnd);
     });
@@ -1029,7 +1031,7 @@ describe('Magnet', function() {
 
       let balanceAvailableToFunder = Number(await magnet.getAvailableBalance(magnetId, owner.address));
       expect(balanceAvailableToFunder)
-        .and.to.be.below(amount - expectedAmountAtCliff)
+        .and.to.be.below(amount - expectedAmountAtCliff.toNumber())
         .and.to.be.above(0);
 
       expect(balanceAvailableToRecipient + balanceAvailableToFunder).to.equal(amount);
