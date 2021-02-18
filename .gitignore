@@ -41,6 +41,9 @@ build/
 # IntelliJ IDE
 .idea
 
+# VS Code mocha
+.mocharc.json
+
 # docs artifacts
 docs/modules/api
 

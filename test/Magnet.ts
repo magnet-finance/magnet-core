@@ -408,10 +408,6 @@ describe('Magnet', function() {
 
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
         .to.be.revertedWith('Start time is in the past');
-
-      let zeroTime = 0;
-      await expect(magnet.mintVestingMagnet(recipient, token, zeroTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
-        .to.be.revertedWith('Start time is in the past');
     });
 
     it('Revert if cliffTime is in the past', async function() {
@@ -501,6 +497,27 @@ describe('Magnet', function() {
       await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
         .to.be.revertedWith('Amount must be >0');
     });
+
+    it('Set startTime to now when parameter is zero', async function() {
+      const {magnet, mockERC20, owner, addr1} = await loadFixture(fixtureRegisterFunder);
+      let recipient = addr1.address;
+      let token = mockERC20.address;
+      let now = getTimeInSeconds();
+      let startTime = 0;
+      let vestingPeriodLength = 1;
+      let amountPerPeriod = 1;
+      let cliffTime = now + CLIFF_TIME_DELTA;
+      let endTime = now + END_TIME_DELTA;
+      let message = "Message 1";
+
+      await expect(magnet.mintVestingMagnet(recipient, token, startTime, vestingPeriodLength, amountPerPeriod, cliffTime, endTime, message))
+        .to.emit(magnet, 'VestingMagnetMinted')
+        .withArgs(recipient, owner.address, 0);
+
+      let m = await magnet.vestingMagnets(0);
+      expect(m.startTime).to.be.above(0).and.below(endTime);
+    });
+
   });
 
   describe('Deposit', function() {

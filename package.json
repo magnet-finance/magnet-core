@@ -25,7 +25,9 @@
     "typescript": "^4.1.3"
   },
   "scripts": {
-    "build": "waffle",
-    "test": "export NODE_ENV=test && mocha -r ts-node/register test/**/*.test.ts"
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "start": "npx hardhat node",
+    "deploy": "npx hardhat run --network localhost scripts/deploy.ts"
   }
 }

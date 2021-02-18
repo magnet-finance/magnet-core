@@ -165,7 +165,8 @@ contract Magnet {
     }
 
     /// @notice Mint a new VestingMagnet with 0 balance.
-    /// @dev to create a VestingMaget with indefinite end time, use _endTime = 2 ** 256 -1
+    /// @dev to create a VestingMagnet with an immediate start time (block.timestamp), use _startTime = 0
+    /// @dev to create a VestingMagnet with an indefinite end time, use _endTime = 2 ** 256 -1
     function mintVestingMagnet(
         address _recipient,
         address _token,
@@ -177,6 +178,7 @@ contract Magnet {
         string calldata _message)
     external returns (uint) {
         require(_recipient != address(0), "Recipient cant be the zero address");
+        if (_startTime == 0) _startTime = block.timestamp;
         require(_startTime >= block.timestamp, "Start time is in the past");
         require(_cliffTime >= _startTime, "Cliff time must be >= start time");
         require(_endTime > _startTime && _endTime >= _cliffTime, "End time must be > start time and >= cliff time");
